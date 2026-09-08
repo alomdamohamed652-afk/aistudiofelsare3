@@ -43,7 +43,7 @@ data class ProductEntity(
     val price: Double,
     val status: ProductStatus = ProductStatus.AVAILABLE,
     val imageEmoji: String,
-    val sizesString: String = "صغير:0.0,وسط:20.0,كبير:40.0", // options
+    val sizesString: String = "صغير:0.0,وسط:20.0,كبير:40.0",
     val addonsString: String = "جبنة زيادة:15.0,صوص خاص:10.0,مخلل:5.0"
 )
 
@@ -167,7 +167,7 @@ data class SupportTicketEntity(
 data class CustomerAddressEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val customerId: Long,
-    val label: String, // منزل، عمل، آخر
+    val label: String,
     val area: String,
     val street: String,
     val building: String,
@@ -202,7 +202,7 @@ data class AppSettingsEntity(
 @Entity(tableName = "favorite_partners")
 data class FavoritePartnerEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long = 1L,
+    val customerId: Long,
     val partnerId: Long,
     val createdAt: Long = System.currentTimeMillis()
 )
@@ -210,7 +210,7 @@ data class FavoritePartnerEntity(
 @Entity(tableName = "order_reviews")
 data class OrderReviewEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long = 1L,
+    val customerId: Long,
     val orderId: Long,
     val partnerRating: Int = 5,
     val driverRating: Int = 5,
@@ -223,7 +223,7 @@ data class DriverPayoutRequestEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val driverId: Long,
     val amount: Double,
-    val status: String = "PENDING", // PENDING, APPROVED, TRANSFERRED
+    val status: String = "PENDING",
     val createdAt: Long = System.currentTimeMillis()
 ) {
     val statusArabic: String
@@ -233,4 +233,3 @@ data class DriverPayoutRequestEntity(
             else -> "قيد المراجعة ⏳"
         }
 }
-
