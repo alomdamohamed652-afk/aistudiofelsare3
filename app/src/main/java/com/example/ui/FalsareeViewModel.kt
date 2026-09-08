@@ -231,7 +231,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             val customerId = currentCustomerId.value ?: run { _alertMessage.value = "يجب تسجيل الدخول لإرسال التقييم"; return@launch }
             val owned = repository.getCustomerOrders(customerId).firstOrNull()?.firstOrNull { it.id == orderId }
             if (owned == null || owned.orderStatus != OrderStatus.DELIVERED) { _alertMessage.value = "لا يمكنك تقييم هذا الطلب"; return@launch }
-            repository.submitReview(orderId, partnerRating, driverRating, notes, customerId)
+            runCatching { repository.submitReview(orderId, partnerRating, driverRating, notes, customerId) }
                 .onSuccess { _reviewingOrderId.value = null; _alertMessage.value = "شكراً لتقييمك! نسعد بخدمتك دائماً ⚡" }
                 .onFailure { error -> _alertMessage.value = error.message ?: "تعذر إرسال التقييم" }
         }
