@@ -1,4 +1,4 @@
-﻿package com.example.data.repository
+package com.example.data.repository
 
 import com.example.core.model.AuthState
 import com.example.core.model.UserRole
@@ -6,16 +6,21 @@ import com.example.core.model.UserSession
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Authentication/session abstraction. The current UI keeps the original callback contract;
- * the local repository extracts credentials from the submission payload until Supabase Auth
- * replaces this prototype implementation.
+ * Authentication/session abstraction.
+ * Production authentication will be provided by Supabase Auth.
  */
 interface AuthRepository {
     val authState: StateFlow<AuthState>
     val currentSession: StateFlow<UserSession?>
 
-    suspend fun login(phone: String, role: UserRole): Result<UserSession>
-    suspend fun register(name: String, phone: String, email: String, role: UserRole): Result<UserSession>
+    suspend fun login(identifier: String, password: String): Result<UserSession>
+    suspend fun register(
+        name: String,
+        phone: String,
+        email: String,
+        password: String,
+        confirmPassword: String
+    ): Result<UserSession>
     suspend fun logout()
     suspend fun switchDevelopmentRole(role: UserRole): UserSession
     suspend fun restoreSession(): UserSession?
