@@ -62,7 +62,12 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         }
     }
 
-    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String, customerId: Long) = withContext(Dispatchers.IO) {
+    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String, customerId: Long): Result<Unit> = withContext(Dispatchers.IO) {
+        val order = dao.getOrderById(orderId)
+            ?: return@withContext Result.failure(IllegalArgumentException("الطلب غير موجود"))
+        if (order.customerId != customerId) {
+            return@withContext Result.failure(SecurityException("لا يمكنك تقييم طلب مستخدم آخر"))
+        }
         dao.insertReview(
             OrderReviewEntity(
                 customerId = customerId,
@@ -72,6 +77,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 notes = notes
             )
         )
+        Result.success(Unit)
     }
 
     suspend fun requestDriverPayout(driverId: Long, amount: Double) = withContext(Dispatchers.IO) {
@@ -588,6 +594,16 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             )
         )
 
+        // Keep sample customer-owned records attached to a real local user rather than an implicit ID.
+        val sampleCustomerId = dao.insertUser(
+            UserEntity(
+                name = "عمرو إبراهيم",
+                phone = "01011122233",
+                passwordHash = "",
+                passwordSalt = ""
+            )
+        )
+
         // 2. Onboarding Pages (Fully admin-configurable)
         dao.insertOnboardingPages(
             listOf(
@@ -871,7 +887,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         dao.insertAddresses(
             listOf(
                 CustomerAddressEntity(
-                    customerId = 1L,
+                    customerId = sampleCustomerId,
                     label = "المنزل",
                     area = "المهندسين",
                     street = "شارع سوريا متفرع من مصدق",
@@ -882,7 +898,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                     isDefault = true
                 ),
                 CustomerAddressEntity(
-                    customerId = 1L,
+                    customerId = sampleCustomerId,
                     label = "العمل",
                     area = "الدقي",
                     street = "شارع مصدق الرئيسي",
@@ -898,7 +914,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         // 9. Sample Initial Orders to populate all roles immediately
         val initialOrder1 = OrderEntity(
             orderNumber = "#FS-1024",
-            customerId = 1L,
+            customerId = sampleCustomerId,
             customerName = "عمرو إبراهيم",
             customerPhone = "01011122233",
             partnerId = pizzaPartner.id,
@@ -920,7 +936,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
         val initialOrder2 = OrderEntity(
             orderNumber = "#FS-1025",
-            customerId = 1L,
+            customerId = sampleCustomerId,
             customerName = "سارة أحمد",
             customerPhone = "01233344455",
             partnerId = pharmacyPartner.id,

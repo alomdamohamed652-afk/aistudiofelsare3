@@ -10,6 +10,8 @@ data class UserEntity(
     val name: String,
     val phone: String,
     val email: String = "",
+    val passwordHash: String,
+    val passwordSalt: String,
     val role: UserRole = UserRole.CUSTOMER,
     val associatedDriverId: Long? = null,
     val associatedPartnerId: Long? = null,
@@ -202,7 +204,7 @@ data class AppSettingsEntity(
 @Entity(tableName = "favorite_partners")
 data class FavoritePartnerEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long = 1L,
+    val customerId: Long,
     val partnerId: Long,
     val createdAt: Long = System.currentTimeMillis()
 )
@@ -210,7 +212,7 @@ data class FavoritePartnerEntity(
 @Entity(tableName = "order_reviews")
 data class OrderReviewEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long = 1L,
+    val customerId: Long,
     val orderId: Long,
     val partnerRating: Int = 5,
     val driverRating: Int = 5,
@@ -233,4 +235,3 @@ data class DriverPayoutRequestEntity(
             else -> "قيد المراجعة ⏳"
         }
 }
-

@@ -13,8 +13,8 @@ interface AuthRepository {
     val authState: StateFlow<AuthState>
     val currentSession: StateFlow<UserSession?>
 
-    suspend fun login(phone: String, role: UserRole): Result<UserSession>
-    suspend fun register(name: String, phone: String, email: String, role: UserRole): Result<UserSession>
+    suspend fun login(identifier: String, password: String): Result<UserSession>
+    suspend fun register(name: String, phone: String, email: String, password: String, role: UserRole): Result<UserSession>
     suspend fun logout()
     suspend fun switchDevelopmentRole(role: UserRole): UserSession
     suspend fun restoreSession(): UserSession?

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.BuildConfig
 import com.example.core.designsystem.*
 import com.example.core.model.UserRole
 import com.example.ui.admin.AdminPortalScreen
@@ -102,7 +103,7 @@ fun FalsareeApp(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             contentWindowInsets = WindowInsets.safeDrawing,
             floatingActionButton = {
-                if (isUserLoggedIn) {
+                if (BuildConfig.DEBUG && isUserLoggedIn) {
                 // Development role switcher; never available before authentication.
                 FloatingActionButton(
                     onClick = { showRolePickerSheet = true },
@@ -143,8 +144,8 @@ fun FalsareeApp(
                 // 2. Auth Screen check
                 else if (!isUserLoggedIn) {
                     AuthScreen(
-                        onLogin = { phone -> viewModel.login(phone) },
-                        onRegister = { name, phone, email -> viewModel.register(name, phone, email) }
+                        onLogin = { identifier, password -> viewModel.login(identifier, password) },
+                        onRegister = { name, phone, email, password, confirmation -> viewModel.register(name, phone, email, password, confirmation) }
                     )
                 }
                 // 3. Active Role UI
@@ -277,8 +278,7 @@ fun FalsareeApp(
                         }
 
                         UserRole.DRIVER -> {
-                            // Resolve driver from session — falls back to first driver in dev mode
-                            val activeDriver = drivers.find { it.id == activeDriverId } ?: drivers.firstOrNull()
+                            val activeDriver = activeDriverId?.let { id -> drivers.find { it.id == id } }
                             val driverActiveOrder = orders.find { it.driverId == activeDriver?.id && it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED }
                             val openOrders = orders.filter { it.driverId == null && it.deliveryStatus == com.example.core.model.DeliveryStatus.WAITING_FOR_DRIVER && it.orderStatus !in listOf(com.example.core.model.OrderStatus.CANCELLED, com.example.core.model.OrderStatus.REJECTED) }
                             val driverOrders = orders.filter { it.driverId == activeDriver?.id }
@@ -289,7 +289,7 @@ fun FalsareeApp(
                                 openOrders = openOrders,
                                 driverOrders = driverOrders,
                                 payoutRequests = driverPayoutRequests,
-                                onRequestPayout = { amt -> viewModel.requestDriverPayout(activeDriver?.id ?: 1L, amt) },
+                                onRequestPayout = { amt -> viewModel.requestDriverPayout(amt) },
                                 onToggleAvailability = { st ->
                                     if (activeDriver != null) {
                                         coroutineScope.launch { viewModel.repository.setDriverAvailability(activeDriver.id, st) }
@@ -422,17 +422,7 @@ fun FalsareeApp(
                     order = order,
                     items = orderItems,
                     activityLogs = orderLogs,
-                    onCancelOrder = {
-                        coroutineScope.launch {
-                            viewModel.repository.updateOrderStatus(
-                                orderId = order.id,
-                                newStatus = com.example.core.model.OrderStatus.CANCELLED,
-                                actor = "العميل",
-                                actorRole = "العميل",
-                                reason = "إلغاء بناء على رغبة العميل"
-                            )
-                        }
-                    },
+                    onCancelOrder = { viewModel.cancelCustomerOrder(order.id) },
                     onDismiss = { viewModel.trackOrder(null) }
                 )
             }
@@ -468,7 +458,7 @@ fun FalsareeApp(
         }
 
         // Global Role Switcher Modal
-        if (showRolePickerSheet) {
+        if (BuildConfig.DEBUG && showRolePickerSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showRolePickerSheet = false },
                 containerColor = SurfaceCard
