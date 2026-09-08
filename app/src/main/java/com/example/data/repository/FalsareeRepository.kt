@@ -40,6 +40,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val allCoupons: Flow<List<CouponEntity>> = dao.getAllCoupons()
     val allDrivers: Flow<List<DriverProfileEntity>> = dao.getAllDrivers()
     val allTickets: Flow<List<SupportTicketEntity>> = dao.getAllTickets()
+    fun getTicketsForCustomer(customerId: Long): Flow<List<SupportTicketEntity>> = dao.getTicketsForCustomer(customerId)
     val allAddresses: Flow<List<CustomerAddressEntity>> = dao.getAllAddresses()
 
     fun getNotificationsForRole(role: UserRole): Flow<List<NotificationEntity>> = dao.getNotificationsForRole(role)
@@ -53,7 +54,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     fun getAddressesForCustomer(customerId: Long): Flow<List<CustomerAddressEntity>> = dao.getAddressesForCustomer(customerId)
 
-    suspend fun toggleFavorite(partnerId: Long, isFav: Boolean, customerId: Long = 1L) = withContext(Dispatchers.IO) {
+    suspend fun toggleFavorite(partnerId: Long, isFav: Boolean, customerId: Long) = withContext(Dispatchers.IO) {
         if (isFav) {
             dao.removeFavoriteForCustomer(partnerId, customerId)
         } else {
@@ -61,7 +62,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         }
     }
 
-    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String, customerId: Long = 1L) = withContext(Dispatchers.IO) {
+    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String, customerId: Long) = withContext(Dispatchers.IO) {
         dao.insertReview(
             OrderReviewEntity(
                 customerId = customerId,
