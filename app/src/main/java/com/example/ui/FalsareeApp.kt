@@ -102,7 +102,8 @@ fun FalsareeApp(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             contentWindowInsets = WindowInsets.safeDrawing,
             floatingActionButton = {
-                // Persistent Role Switcher FAB to test Customer, Admin, Driver, Partner instantly
+                if (isUserLoggedIn) {
+                // Development role switcher; never available before authentication.
                 FloatingActionButton(
                     onClick = { showRolePickerSheet = true },
                     containerColor = BrandSecondary,
@@ -123,6 +124,7 @@ fun FalsareeApp(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
                 }
             }
         ) { innerPadding ->
