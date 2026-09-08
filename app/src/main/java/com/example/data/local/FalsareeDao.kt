@@ -166,6 +166,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM support_tickets ORDER BY createdAt DESC")
     fun getAllTickets(): Flow<List<SupportTicketEntity>>
 
+    @Query("SELECT * FROM support_tickets WHERE customerId = :customerId ORDER BY createdAt DESC")
+    fun getTicketsForCustomer(customerId: Long): Flow<List<SupportTicketEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTicket(ticket: SupportTicketEntity): Long
 
