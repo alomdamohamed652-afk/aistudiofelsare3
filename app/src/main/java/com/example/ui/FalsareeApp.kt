@@ -145,7 +145,14 @@ fun FalsareeApp(
                 else if (!isUserLoggedIn) {
                     AuthScreen(
                         onLogin = { identifier, password -> viewModel.login(identifier, password) },
-                        onRegister = { name, phone, email, password, confirmation -> viewModel.register(name, phone, email, password, confirmation) }
+                        onRegister = { name, phone, email, password, confirmation -> viewModel.register(name, phone, email, password, confirmation) },
+                        onRequestOtp = { identifier ->
+                            if (identifier.isBlank()) {
+                                viewModel.setAlert("أدخل رقم الهاتف أولًا")
+                            } else {
+                                viewModel.setAlert("رمز التحقق التجريبي: 1234 (سيتم استبداله بـ OTP حقيقي لاحقًا)")
+                            }
+                        }
                     )
                 }
                 // 3. Active Role UI
