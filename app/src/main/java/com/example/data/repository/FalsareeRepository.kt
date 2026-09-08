@@ -599,8 +599,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             UserEntity(
                 name = "عمرو إبراهيم",
                 phone = "01011122233",
-                passwordHash = "",
-                passwordSalt = ""
+                passwordHash = "6de6eb033759a8a9a255d64386afc169c03ce46f1156907b7e7043c6b98c522d",
+                passwordSalt = "falsaree_seed_v1"
             )
         )
 
