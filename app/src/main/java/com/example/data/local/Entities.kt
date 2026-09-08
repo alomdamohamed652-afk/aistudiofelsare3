@@ -152,7 +152,7 @@ data class DriverProfileEntity(
 @Entity(tableName = "support_tickets")
 data class SupportTicketEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long = 1L,
+    val customerId: Long,
     val ticketNumber: String,
     val customerName: String,
     val orderId: Long? = null,
@@ -166,7 +166,7 @@ data class SupportTicketEntity(
 @Entity(tableName = "customer_addresses")
 data class CustomerAddressEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long = 1L,
+    val customerId: Long,
     val label: String, // منزل، عمل، آخر
     val area: String,
     val street: String,
