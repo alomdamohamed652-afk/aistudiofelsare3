@@ -176,16 +176,19 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 )
             )
 
-            // Notify Partner & Admin
-            dao.insertNotification(
-                NotificationEntity(
-                    targetRole = UserRole.PARTNER,
-                    category = NotificationCategory.ORDER,
-                    title = "طلب جديد $orderNum",
-                    message = "طلب جديد من $customerName بإجمالي ${total.toInt()} ج.م",
-                    relatedOrderId = orderId
+            // Notify only the authenticated account linked to this partner.
+            dao.getUserByAssociatedPartnerId(partner.id)?.let { partnerUser ->
+                dao.insertNotification(
+                    NotificationEntity(
+                        targetUserId = partnerUser.id,
+                        targetRole = UserRole.PARTNER,
+                        category = NotificationCategory.ORDER,
+                        title = "طلب جديد $orderNum",
+                        message = "طلب جديد من $customerName بإجمالي ${total.toInt()} ج.م",
+                        relatedOrderId = orderId
+                    )
                 )
-            )
+            }
             dao.insertNotification(
                 NotificationEntity(
                     targetRole = UserRole.ADMIN,
@@ -411,15 +414,19 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             )
         )
 
-        dao.insertNotification(
-            NotificationEntity(
-                targetRole = UserRole.DRIVER,
-                category = NotificationCategory.ORDER,
-                title = "تم تعيين طلب جديد لك!",
-                message = "طلب جديد ${current.orderNumber} من ${current.partnerName}",
-                relatedOrderId = orderId
+        // Notify only the authenticated account linked to the assigned driver.
+        dao.getUserByAssociatedDriverId(driver.id)?.let { driverUser ->
+            dao.insertNotification(
+                NotificationEntity(
+                    targetUserId = driverUser.id,
+                    targetRole = UserRole.DRIVER,
+                    category = NotificationCategory.ORDER,
+                    title = "تم تعيين طلب جديد لك!",
+                    message = "طلب جديد ${current.orderNumber} من ${current.partnerName}",
+                    relatedOrderId = orderId
+                )
             )
-        )
+        }
 
         Result.success(Unit)
     }
@@ -601,8 +608,13 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             UserEntity(
                 name = "عمرو إبراهيم",
                 phone = "01011122233",
+ fix/identity-hardening
+                passwordHash = "6de6eb033759a8a9a255d64386afc169c03ce46f1156907b7e7043c6b98c522d",
+                passwordSalt = "falsaree_seed_v1"
+
                 passwordHash = "c15c1c1a2f31f8cda2ecbcb1b44d96f0f9f9f2d0a5d5c6e8c9a0b1d2e3f4a5b6",
                 passwordSalt = "seed-only-sample-account"
+ main
             )
         )
 

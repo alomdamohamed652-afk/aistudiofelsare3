@@ -145,7 +145,14 @@ fun FalsareeApp(
                 else if (!isUserLoggedIn) {
                     AuthScreen(
                         onLogin = { identifier, password -> viewModel.login(identifier, password) },
-                        onRegister = { name, phone, email, password, confirmation -> viewModel.register(name, phone, email, password, confirmation) }
+                        onRegister = { name, phone, email, password, confirmation -> viewModel.register(name, phone, email, password, confirmation) },
+                        onRequestOtp = { identifier ->
+                            if (identifier.isBlank()) {
+                                viewModel.setAlert("أدخل رقم الهاتف أولًا")
+                            } else {
+                                viewModel.setAlert("رمز التحقق التجريبي: 1234 (سيتم استبداله بـ OTP حقيقي لاحقًا)")
+                            }
+                        }
                     )
                 }
                 // 3. Active Role UI
@@ -170,6 +177,12 @@ fun FalsareeApp(
                                 addresses = addresses,
                                 coupons = coupons,
                                 tickets = tickets,
+                                currentSession = currentSession,
+                                onLogout = {
+                                    viewModel.logout()
+                                    showCartScreen = false
+                                    showNotificationSheet = false
+                                },
                                 orders = customerOrders,
                                 searchQuery = searchQuery,
                                 onQueryChange = { viewModel.setSearchQuery(it) },
@@ -338,11 +351,29 @@ fun FalsareeApp(
                         }
 
                         UserRole.PARTNER -> {
+ fix/identity-hardening
+                            // Partner identity must come from the authenticated session.
+                            val activePartner = activePartnerId?.let { id -> partners.find { it.id == id } }
+                            val partnerProducts = activePartner?.let { partner ->
+                                products.filter { it.partnerId == partner.id }
+                            } ?: emptyList()
+
                             // Resolve partner strictly from the authenticated session identity.
                             val activePartner = activePartnerId?.let { id -> partners.find { it.id == id } }
                             val partnerProducts = products.filter { it.partnerId == activePartner?.id }
+ main
 
-                            PartnerPortalScreen(
+                            if (activePartner == null) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "هذا الحساب غير مرتبط بشريك بعد. يرجى التواصل مع الإدارة.",
+                                        modifier = Modifier.padding(24.dp)
+                                    )
+                                }
+                            } else PartnerPortalScreen(
                                 allPartners = partners,
                                 activePartner = activePartner,
                                 orders = orders,

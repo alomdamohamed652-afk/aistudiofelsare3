@@ -30,13 +30,13 @@ import com.example.core.designsystem.*
 fun AuthScreen(
     onLogin: (identifier: String, password: String) -> Unit,
     onRegister: (name: String, phone: String, email: String, password: String, confirmation: String) -> Unit,
+    onRequestOtp: (phone: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Login, 1: Register
     var phoneOrEmail by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-    var rememberSession by remember { mutableStateOf(true) }
 
     // Register fields
     var regName by remember { mutableStateOf("") }
@@ -45,10 +45,6 @@ fun AuthScreen(
     var regPassword by remember { mutableStateOf("") }
     var regConfirmPassword by remember { mutableStateOf("") }
 
-    // Forgot password dialog
-    var showForgotPasswordDialog by remember { mutableStateOf(false) }
-    var forgotPhone by remember { mutableStateOf("") }
-    var forgotStep by remember { mutableIntStateOf(1) } // 1: phone, 2: code, 3: new pass
 
     Column(
         modifier = modifier
@@ -132,8 +128,8 @@ fun AuthScreen(
                     label = "رقم الهاتف أو البريد الإلكتروني",
                     placeholder = "01xxxxxxxxx",
                     leadingIcon = Icons.Default.Phone,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    testTag = "auth_login_phone_input"
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                    testTag = "auth_login_identifier_input"
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -157,35 +153,14 @@ fun AuthScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                TextButton(
+                    onClick = { onRequestOtp(phoneOrEmail.trim()) },
+                    modifier = Modifier.align(Alignment.End)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = rememberSession,
-                            onCheckedChange = { rememberSession = it },
-                            colors = CheckboxDefaults.colors(checkedColor = BrandPrimary)
-                        )
-                        Text(
-                            text = "تذكر الجلسة",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
-                        )
-                    }
-
-                    TextButton(onClick = { showForgotPasswordDialog = true }) {
-                        Text(
-                            text = "نسيت كلمة المرور؟",
-                            color = BrandPrimary,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Text("إرسال رمز التحقق التجريبي")
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 AppButton(
                     text = "تسجيل الدخول",
@@ -267,98 +242,4 @@ fun AuthScreen(
 
     }
 
-    // Forgot Password Flow Dialog
-    if (showForgotPasswordDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                showForgotPasswordDialog = false
-                forgotStep = 1
-            },
-            title = {
-                Text(
-                    text = when (forgotStep) {
-                        1 -> "استعادة كلمة المرور"
-                        2 -> "كود التحقق (OTP)"
-                        else -> "تعيين كلمة مرور جديدة"
-                    },
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column {
-                    when (forgotStep) {
-                        1 -> {
-                            Text(
-                                "أدخل رقم هاتفك المسجل وسنرسل لك كود التحقق.",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            AppInput(
-                                value = forgotPhone,
-                                onValueChange = { forgotPhone = it },
-                                label = "رقم الهاتف",
-                                placeholder = "01xxxxxxxxx",
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
-                            )
-                        }
-                        2 -> {
-                            Text(
-                                "تم إرسال كود التحقق المكون من 4 أرقام إلى هاتفك.",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            var otpCode by remember { mutableStateOf("1234") }
-                            AppInput(
-                                value = otpCode,
-                                onValueChange = { otpCode = it },
-                                label = "كود التحقق",
-                                placeholder = "1234",
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
-                        }
-                        3 -> {
-                            Text(
-                                "أدخل كلمة المرور الجديدة لحسابك.",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            var newPass by remember { mutableStateOf("") }
-                            AppInput(
-                                value = newPass,
-                                onValueChange = { newPass = it },
-                                label = "كلمة المرور الجديدة",
-                                visualTransformation = PasswordVisualTransformation()
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                AppButton(
-                    text = when (forgotStep) {
-                        1 -> "إرسال الكود"
-                        2 -> "تحقق"
-                        else -> "حفظ والدخول"
-                    },
-                    onClick = {
-                        if (forgotStep < 3) {
-                            forgotStep++
-                        } else {
-                            showForgotPasswordDialog = false
-                            forgotStep = 1
-                            // Password reset requires a verified backend and is not performed locally.
-                        }
-                    }
-                )
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showForgotPasswordDialog = false
-                    forgotStep = 1
-                }) {
-                    Text("إلغاء")
-                }
-            }
-        )
-    }
 }
