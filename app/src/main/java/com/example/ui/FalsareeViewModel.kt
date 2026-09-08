@@ -19,15 +19,21 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     // Current authenticated session — drives all user-specific data
     val currentSession: StateFlow<UserSession?> = authRepository.currentSession
 
-    // --- Active App Navigation & Role State ---
-    private val _currentRole = MutableStateFlow(UserRole.CUSTOMER)
-    val currentRole: StateFlow<UserRole> = _currentRole.asStateFlow()
+    // --- Session is the single source of truth for identity and role ---
+    val currentRole: StateFlow<UserRole> = currentSession
+        .map { it?.role ?: UserRole.CUSTOMER }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, UserRole.CUSTOMER)
+
+    val isUserLoggedIn: StateFlow<Boolean> = currentSession
+        .map { it != null }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val currentCustomerId: StateFlow<Long?> = currentSession
+        .map { session -> session?.associatedCustomerId }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val _isOnboardingCompleted = MutableStateFlow(false)
     val isOnboardingCompleted: StateFlow<Boolean> = _isOnboardingCompleted.asStateFlow()
-
-    private val _isUserLoggedIn = MutableStateFlow(true)
-    val isUserLoggedIn: StateFlow<Boolean> = _isUserLoggedIn.asStateFlow()
 
     // Customer Navigation Tab (0: Home, 1: Explore, 2: Orders, 3: Favorites, 4: Profile)
     private val _customerSelectedTab = MutableStateFlow(0)
@@ -53,8 +59,29 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     private val _reviewingOrderId = MutableStateFlow<Long?>(null)
     val reviewingOrderId: StateFlow<Long?> = _reviewingOrderId.asStateFlow()
 
-    // Favorites
-    val favoritePartnerIds: StateFlow<List<Long>> = repository.favoritePartnerIds
+    // Customer-scoped data. Never fall back to a demo user.
+    val favoritePartnerIds: StateFlow<List<Long>> = currentCustomerId
+        .flatMapLatest { customerId ->
+            customerId?.let(repository::getFavoritePartnerIdsForCustomer) ?: flowOf(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val customerOrders: StateFlow<List<OrderEntity>> = currentCustomerId
+        .flatMapLatest { customerId ->
+            customerId?.let(repository::getCustomerOrders) ?: flowOf(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val customerAddresses: StateFlow<List<CustomerAddressEntity>> = currentCustomerId
+        .flatMapLatest { customerId ->
+            customerId?.let(repository::getAddressesForCustomer) ?: flowOf(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val customerTickets: StateFlow<List<SupportTicketEntity>> = currentCustomerId
+        .flatMapLatest { customerId ->
+            customerId?.let(repository::getTicketsForCustomer) ?: flowOf(emptyList())
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Driver Payouts
@@ -107,7 +134,6 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     // --- Role Switching (dev tool — routes through auth for session consistency) ---
     fun switchRole(role: UserRole) {
-        _currentRole.value = role
         viewModelScope.launch {
             val updatedSession = authRepository.switchDevelopmentRole(role)
             updatedSession.associatedDriverId?.let { _activeDriverId.value = it }
@@ -136,6 +162,39 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     fun setActivePartnerId(id: Long) {
         _activePartnerId.value = id
+    }
+
+    fun login(phone: String) {
+        if (phone.isBlank()) {
+            _alertMessage.value = "أدخل رقم الهاتف"
+            return
+        }
+        viewModelScope.launch {
+            authRepository.login(phone.trim(), UserRole.CUSTOMER)
+                .onSuccess {
+                    _customerSelectedTab.value = 0
+                }
+                .onFailure { error ->
+                    _alertMessage.value = error.message ?: "تعذر تسجيل الدخول"
+                }
+        }
+    }
+
+    fun register(name: String, phone: String, email: String) {
+        if (name.isBlank() || phone.isBlank()) {
+            _alertMessage.value = "الاسم ورقم الهاتف مطلوبان"
+            return
+        }
+        viewModelScope.launch {
+            authRepository.register(
+                name = name.trim(),
+                phone = phone.trim(),
+                email = email.trim(),
+                role = UserRole.CUSTOMER
+            ).onFailure { error ->
+                _alertMessage.value = error.message ?: "تعذر إنشاء الحساب"
+            }
+        }
     }
 
     fun clearAlert() {
@@ -234,7 +293,11 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         val optionsSummary = _cartOptions.value.values.joinToString(", ")
 
         viewModelScope.launch {
-            val customerId = currentSession.value?.associatedCustomerId ?: 1L
+            val customerId = currentSession.value?.associatedCustomerId
+            if (customerId == null) {
+                _alertMessage.value = "يجب تسجيل الدخول لإرسال الطلب"
+                return@launch
+            }
             val res = repository.placeOrder(
                 customerId = customerId,
                 customerName = customerName,
@@ -266,7 +329,11 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleFavorite(partnerId: Long) {
         viewModelScope.launch {
-            val customerId = currentSession.value?.associatedCustomerId ?: 1L
+            val customerId = currentSession.value?.associatedCustomerId
+            if (customerId == null) {
+                _alertMessage.value = "يجب تسجيل الدخول لإدارة المفضلة"
+                return@launch
+            }
             val isFav = favoritePartnerIds.value.contains(partnerId)
             repository.toggleFavorite(partnerId, isFav, customerId)
             _alertMessage.value = if (isFav) "تمت الإزالة من المفضلة" else "تمت الإضافة إلى المفضلة ❤️"
@@ -283,10 +350,57 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String) {
         viewModelScope.launch {
-            val customerId = currentSession.value?.associatedCustomerId ?: 1L
+            val customerId = currentSession.value?.associatedCustomerId
+            if (customerId == null) {
+                _alertMessage.value = "يجب تسجيل الدخول لإرسال التقييم"
+                return@launch
+            }
             repository.submitReview(orderId, partnerRating, driverRating, notes, customerId)
             _reviewingOrderId.value = null
             _alertMessage.value = "شكراً لتقييمك! نسعد بخدمتك دائماً ⚡"
+        }
+    }
+
+    fun addAddress(address: CustomerAddressEntity) {
+        viewModelScope.launch {
+            val session = currentSession.value
+            val customerId = session?.associatedCustomerId
+            if (customerId == null) {
+                _alertMessage.value = "يجب تسجيل الدخول لإضافة عنوان"
+                return@launch
+            }
+            repository.addAddress(address.copy(id = 0L, customerId = customerId))
+            _alertMessage.value = "تم حفظ العنوان بنجاح"
+        }
+    }
+
+    fun deleteAddress(address: CustomerAddressEntity) {
+        viewModelScope.launch {
+            val customerId = currentSession.value?.associatedCustomerId
+            if (customerId == null || address.customerId != customerId) {
+                _alertMessage.value = "لا يمكنك حذف هذا العنوان"
+                return@launch
+            }
+            repository.deleteAddress(address)
+        }
+    }
+
+    fun createSupportTicket(ticket: SupportTicketEntity) {
+        viewModelScope.launch {
+            val session = currentSession.value
+            val customerId = session?.associatedCustomerId
+            if (session == null || customerId == null) {
+                _alertMessage.value = "يجب تسجيل الدخول لإنشاء تذكرة دعم"
+                return@launch
+            }
+            repository.createTicket(
+                ticket.copy(
+                    id = 0L,
+                    customerId = customerId,
+                    customerName = session.name
+                )
+            )
+            _alertMessage.value = "تم إرسال تذكرة الدعم بنجاح"
         }
     }
 
