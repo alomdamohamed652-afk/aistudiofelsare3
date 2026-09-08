@@ -15,7 +15,7 @@ import java.security.MessageDigest
 
 /**
  * Local authentication implementation used until Supabase Auth is integrated.
- * Passwords are hashed locally for the prototype; production authentication will move to Supabase Auth.
+ * This is a prototype auth layer; production authentication should use Supabase Auth.
  */
 class LocalAuthRepository(
     private val dao: FalsareeDao
@@ -27,20 +27,21 @@ class LocalAuthRepository(
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     override val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    override suspend fun login(phone: String, role: UserRole): Result<UserSession> = withContext(Dispatchers.IO) {
-        val (normalizedPhone, password) = unpackLoginPayload(phone)
-        if (normalizedPhone.isBlank()) {
-            return@withContext Result.failure(IllegalArgumentException("رقم الهاتف مطلوب"))
+    override suspend fun login(identifier: String, password: String): Result<UserSession> = withContext(Dispatchers.IO) {
+        val normalizedIdentifier = identifier.trim()
+        if (normalizedIdentifier.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("رقم الهاتف أو البريد الإلكتروني مطلوب"))
         }
         if (password.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("كلمة المرور مطلوبة"))
         }
 
-        val existingUser = dao.getUserByPhone(normalizedPhone)
-            ?: return@withContext Result.failure(IllegalArgumentException("لا يوجد حساب مسجل بهذا الرقم"))
+        val lookupEmail = normalizedIdentifier.lowercase()
+        val existingUser = dao.getUserByIdentifier(normalizedIdentifier, lookupEmail)
+            ?: return@withContext Result.failure(IllegalArgumentException("رقم الهاتف أو البريد الإلكتروني غير مسجل"))
 
         if (existingUser.passwordHash.isBlank() || existingUser.passwordHash != hashPassword(password)) {
-            return@withContext Result.failure(IllegalArgumentException("رقم الهاتف أو كلمة المرور غير صحيحة"))
+            return@withContext Result.failure(IllegalArgumentException("رقم الهاتف أو البريد الإلكتروني أو كلمة المرور غير صحيحة"))
         }
 
         val session = existingUser.toSession()
@@ -53,18 +54,22 @@ class LocalAuthRepository(
         name: String,
         phone: String,
         email: String,
-        role: UserRole
+        password: String,
+        confirmPassword: String
     ): Result<UserSession> = withContext(Dispatchers.IO) {
         try {
             val normalizedName = name.trim()
             val normalizedPhone = phone.trim()
-            val (normalizedEmail, password, confirmPassword) = unpackRegistrationPayload(email)
+            val normalizedEmail = email.trim().lowercase()
 
             if (normalizedName.length < 2) {
                 return@withContext Result.failure(IllegalArgumentException("الاسم يجب أن يحتوي على حرفين على الأقل"))
             }
             if (!normalizedPhone.matches(Regex("^01[0-9]{9}$"))) {
                 return@withContext Result.failure(IllegalArgumentException("رقم الهاتف غير صالح"))
+            }
+            if (normalizedEmail.isNotBlank() && !android.util.Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches()) {
+                return@withContext Result.failure(IllegalArgumentException("البريد الإلكتروني غير صالح"))
             }
             if (password.length < 6) {
                 return@withContext Result.failure(IllegalArgumentException("كلمة المرور يجب أن تكون 6 أحرف أو أكثر"))
@@ -75,6 +80,9 @@ class LocalAuthRepository(
             if (dao.getUserByPhone(normalizedPhone) != null) {
                 return@withContext Result.failure(IllegalArgumentException("يوجد حساب مسجل بهذا الرقم"))
             }
+            if (normalizedEmail.isNotBlank() && dao.getUserByIdentifier("", normalizedEmail) != null) {
+                return@withContext Result.failure(IllegalArgumentException("يوجد حساب مسجل بهذا البريد الإلكتروني"))
+            }
 
             val userId = dao.insertUser(
                 UserEntity(
@@ -82,7 +90,7 @@ class LocalAuthRepository(
                     phone = normalizedPhone,
                     email = normalizedEmail,
                     passwordHash = hashPassword(password),
-                    role = role
+                    role = UserRole.CUSTOMER
                 )
             )
 
@@ -91,8 +99,8 @@ class LocalAuthRepository(
                 name = normalizedName,
                 phone = normalizedPhone,
                 email = normalizedEmail,
-                role = role,
-                associatedCustomerId = if (role == UserRole.CUSTOMER) userId else null
+                role = UserRole.CUSTOMER,
+                associatedCustomerId = userId
             )
 
             _currentSession.value = session
@@ -108,7 +116,7 @@ class LocalAuthRepository(
         _authState.value = AuthState.Unauthenticated
     }
 
-    /** Development-only role switching. Production builds cannot elevate roles. */
+    /** Development-only role switching. Never callable in release builds. */
     override suspend fun switchDevelopmentRole(role: UserRole): UserSession {
         if (!BuildConfig.DEBUG) {
             throw IllegalStateException("تبديل الأدوار غير متاح في نسخة الإنتاج")
@@ -136,32 +144,8 @@ class LocalAuthRepository(
         associatedPartnerId = associatedPartnerId
     )
 
-    /**
-     * Compatibility payload used by the existing callback signature. The payload never reaches the database;
-     * only the extracted password hash is stored.
-     */
-    private fun unpackLoginPayload(payload: String): Pair<String, String> {
-        val separator = payload.indexOf(CREDENTIAL_SEPARATOR)
-        if (separator < 0) return payload.trim() to ""
-        return payload.substring(0, separator).trim() to payload.substring(separator + 1)
-    }
-
-    private fun unpackRegistrationPayload(payload: String): Triple<String, String, String> {
-        val separator = payload.indexOf(CREDENTIAL_SEPARATOR)
-        if (separator < 0) return payload.trim() to "" to ""
-        val email = payload.substring(0, separator)
-        val remaining = payload.substring(separator + 1)
-        val second = remaining.indexOf(CREDENTIAL_SEPARATOR)
-        if (second < 0) return email to remaining to ""
-        return Triple(email, remaining.substring(0, second), remaining.substring(second + 1))
-    }
-
     private fun hashPassword(password: String): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(password.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
-    }
-
-    private companion object {
-        const val CREDENTIAL_SEPARATOR = "\u001F"
     }
 }
