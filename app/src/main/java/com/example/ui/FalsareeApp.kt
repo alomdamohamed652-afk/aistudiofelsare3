@@ -170,6 +170,12 @@ fun FalsareeApp(
                                 addresses = addresses,
                                 coupons = coupons,
                                 tickets = tickets,
+                                currentSession = currentSession,
+                                onLogout = {
+                                    viewModel.logout()
+                                    showCartScreen = false
+                                    showNotificationSheet = false
+                                },
                                 orders = customerOrders,
                                 searchQuery = searchQuery,
                                 onQueryChange = { viewModel.setSearchQuery(it) },
