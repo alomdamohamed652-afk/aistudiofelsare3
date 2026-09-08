@@ -13,7 +13,7 @@ interface FalsareeDao {
     suspend fun getUserById(id: Long): UserEntity?
 
     @Query("SELECT * FROM users WHERE phone = :phone OR (email != '' AND email = :email) LIMIT 1")
-    suspend fun getUserByIdentifier(phone: String, email: String = phone): UserEntity?
+    suspend fun getUserByIdentifier(phone: String, email: String): UserEntity?
 
     @Query("SELECT * FROM users WHERE phone = :phone LIMIT 1")
     suspend fun getUserByPhone(phone: String): UserEntity?
