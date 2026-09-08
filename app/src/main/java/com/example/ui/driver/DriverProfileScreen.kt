@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.BuildConfig
 import com.example.core.designsystem.*
 import com.example.data.local.DriverProfileEntity
 
@@ -273,20 +274,22 @@ fun DriverProfileScreen(
                 }
             }
 
-            // Switch to Customer Role Button
-            item {
-                OutlinedButton(
-                    onClick = onSwitchRole,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("driver_switch_customer_btn"),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CustomerPrimaryBlue)
-                ) {
-                    Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = CustomerPrimaryBlue)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("التبديل إلى واجهة العميل 👤", color = CustomerPrimaryBlue, fontWeight = FontWeight.Bold)
+            if (BuildConfig.DEBUG) {
+                // Development-only role switch.
+                item {
+                    OutlinedButton(
+                        onClick = onSwitchRole,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("driver_switch_customer_btn"),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, CustomerPrimaryBlue)
+                    ) {
+                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = CustomerPrimaryBlue)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("التبديل إلى واجهة العميل 👤", color = CustomerPrimaryBlue, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
