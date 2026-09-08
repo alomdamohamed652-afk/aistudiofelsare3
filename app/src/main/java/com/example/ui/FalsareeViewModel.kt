@@ -89,9 +89,9 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         .flatMapLatest { session -> session?.associatedDriverId?.let(repository::getDriverPayoutRequests) ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Active Partner ID — sourced from session when available, overridable by admin/dev tools
-    private val _activePartnerId = MutableStateFlow<Long>(1L)
-    val activePartnerId: StateFlow<Long> = _activePartnerId.asStateFlow()
+    // Active Partner ID is available only when the authenticated session is linked to a partner.
+    private val _activePartnerId = MutableStateFlow<Long?>(null)
+    val activePartnerId: StateFlow<Long?> = _activePartnerId.asStateFlow()
 
     // Active Driver ID is available only when the authenticated session is linked to a driver.
     private val _activeDriverId = MutableStateFlow<Long?>(null)
@@ -166,6 +166,10 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setActivePartnerId(id: Long) {
+        if (!BuildConfig.DEBUG) {
+            _alertMessage.value = "لا يمكن تغيير هوية الشريك خارج وضع الاختبار"
+            return
+        }
         _activePartnerId.value = id
     }
 
@@ -460,6 +464,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             _customerSelectedTab.value = 0
             _driverSelectedTab.value = 0
             _activeDriverId.value = null
+            _activePartnerId.value = null
         }
     }
 
