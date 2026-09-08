@@ -3,6 +3,7 @@ package com.example.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.BuildConfig
 import com.example.core.model.*
 import com.example.data.local.*
 import com.example.data.repository.FalsareeRepository
@@ -89,9 +90,9 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         .flatMapLatest { session -> session?.associatedDriverId?.let(repository::getDriverPayoutRequests) ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Active Partner ID — sourced from session when available, overridable by admin/dev tools
-    private val _activePartnerId = MutableStateFlow<Long>(1L)
-    val activePartnerId: StateFlow<Long> = _activePartnerId.asStateFlow()
+    // Active partner identity must come from the authenticated session.
+    private val _activePartnerId = MutableStateFlow<Long?>(null)
+    val activePartnerId: StateFlow<Long?> = _activePartnerId.asStateFlow()
 
     // Active Driver ID is available only when the authenticated session is linked to a driver.
     private val _activeDriverId = MutableStateFlow<Long?>(null)
@@ -135,10 +136,19 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     // --- Role Switching (dev tool — routes through auth for session consistency) ---
     fun switchRole(role: UserRole) {
+        if (!BuildConfig.DEBUG) {
+            _alertMessage.value = "تبديل الأدوار متاح في نسخة التطوير فقط"
+            return
+        }
         viewModelScope.launch {
-            val updatedSession = authRepository.switchDevelopmentRole(role)
-            updatedSession.associatedDriverId?.let { _activeDriverId.value = it }
-            updatedSession.associatedPartnerId?.let { _activePartnerId.value = it }
+            runCatching { authRepository.switchDevelopmentRole(role) }
+                .onSuccess { updatedSession ->
+                    _activeDriverId.value = updatedSession.associatedDriverId
+                    _activePartnerId.value = updatedSession.associatedPartnerId
+                }
+                .onFailure { error ->
+                    _alertMessage.value = error.message ?: "تعذر تبديل الدور"
+                }
         }
     }
 
@@ -166,7 +176,9 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setActivePartnerId(id: Long) {
-        _activePartnerId.value = id
+        if (BuildConfig.DEBUG) {
+            _activePartnerId.value = id
+        }
     }
 
     fun login(identifier: String, password: String) {
@@ -176,8 +188,10 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             authRepository.login(identifier.trim(), password)
-                .onSuccess {
+                .onSuccess { session ->
                     _customerSelectedTab.value = 0
+                    _activeDriverId.value = session.associatedDriverId
+                    _activePartnerId.value = session.associatedPartnerId
                 }
                 .onFailure { error ->
                     _alertMessage.value = error.message ?: "تعذر تسجيل الدخول"
@@ -460,6 +474,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             _customerSelectedTab.value = 0
             _driverSelectedTab.value = 0
             _activeDriverId.value = null
+            _activePartnerId.value = null
         }
     }
 
