@@ -18,6 +18,12 @@ interface FalsareeDao {
     @Query("SELECT * FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1")
     suspend fun getUserByEmail(email: String): UserEntity?
 
+    @Query("SELECT * FROM users WHERE associatedDriverId = :driverId LIMIT 1")
+    suspend fun getUserByAssociatedDriverId(driverId: Long): UserEntity?
+
+    @Query("SELECT * FROM users WHERE associatedPartnerId = :partnerId LIMIT 1")
+    suspend fun getUserByAssociatedPartnerId(partnerId: Long): UserEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUser(user: UserEntity): Long
 
