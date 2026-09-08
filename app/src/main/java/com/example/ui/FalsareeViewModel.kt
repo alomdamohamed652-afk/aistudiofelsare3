@@ -112,12 +112,10 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     val alertMessage: StateFlow<String?> = _alertMessage.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            repository.seedInitialDataIfEmpty()
-        }
+        viewModelScope.launch { repository.seedInitialDataIfEmpty() }
     }
 
-    /** Debug-only compatibility helper. Production builds reject role changes in LocalAuthRepository. */
+    /** Development-only helper. Release builds cannot change the authenticated role. */
     fun switchRole(role: UserRole) {
         viewModelScope.launch {
             runCatching { authRepository.switchDevelopmentRole(role) }
@@ -140,16 +138,13 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             return
         }
         viewModelScope.launch {
-            if (repository.getOrderForCustomer(customerId, orderId) == null) {
-                _alertMessage.value = "لا يمكنك عرض هذا الطلب"
-            } else {
-                _trackedOrderId.value = orderId
-            }
+            val ownedOrder = repository.getCustomerOrders(customerId).firstOrNull()?.any { it.id == orderId } == true
+            if (ownedOrder) _trackedOrderId.value = orderId else _alertMessage.value = "لا يمكنك عرض هذا الطلب"
         }
     }
 
     fun setActivePartnerId(id: Long) {
-        if (id > 0) _activePartnerId.value = id
+        if (id > 0L) _activePartnerId.value = id
     }
 
     fun login(identifier: String, password: String) {
@@ -173,15 +168,11 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun register(name: String, phone: String, email: String, password: String, confirmPassword: String) {
-        if (name.isBlank() || phone.isBlank()) {
-            _alertMessage.value = "الاسم ورقم الهاتف مطلوبان"
-            return
-        }
         viewModelScope.launch {
             authRepository.register(
-                name = name.trim(),
-                phone = phone.trim(),
-                email = email.trim(),
+                name = name,
+                phone = phone,
+                email = email,
                 password = password,
                 confirmPassword = confirmPassword
             ).onFailure { error -> _alertMessage.value = error.message ?: "تعذر إنشاء الحساب" }
@@ -204,6 +195,10 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     fun completeOnboarding() { _isOnboardingCompleted.value = true }
 
     fun addToCart(partner: PartnerEntity, product: ProductEntity, quantity: Int, optionsSummary: String = "") {
+        if (currentRole.value != UserRole.CUSTOMER) {
+            _alertMessage.value = "إضافة المنتجات للسلة متاحة للعميل فقط"
+            return
+        }
         if (quantity <= 0) {
             _alertMessage.value = "الكمية غير صالحة"
             return
@@ -275,15 +270,11 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         paymentMethod: PaymentMethod,
         transferReceiptNote: String = ""
     ) {
-        if (currentRole.value != UserRole.CUSTOMER) {
-            _alertMessage.value = "هذا الإجراء متاح للعميل فقط"
-            return
-        }
         val session = currentSession.value
         val customerId = session?.associatedCustomerId
         val partner = _cartPartner.value
-        if (customerId == null || session == null) {
-            _alertMessage.value = "يجب تسجيل الدخول لإرسال الطلب"
+        if (currentRole.value != UserRole.CUSTOMER || session == null || customerId == null) {
+            _alertMessage.value = "يجب تسجيل الدخول بحساب عميل لإرسال الطلب"
             return
         }
         if (partner == null || _cartItems.value.isEmpty()) {
@@ -294,6 +285,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             _alertMessage.value = "اختر عنوان التوصيل"
             return
         }
+
         val itemsList = _cartItems.value.map { it.key to it.value }
         val optionsSummary = _cartOptions.value.values.filter { it.isNotBlank() }.joinToString(", ")
 
@@ -340,7 +332,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             return
         }
         viewModelScope.launch {
-            val order = repository.getOrderForCustomer(customerId, orderId)
+            val order = repository.getCustomerOrders(customerId).firstOrNull()?.firstOrNull { it.id == orderId }
             if (order == null || order.orderStatus != OrderStatus.DELIVERED) {
                 _alertMessage.value = "لا يمكن تقييم هذا الطلب"
             } else {
@@ -356,6 +348,11 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             val customerId = currentCustomerId.value
             if (customerId == null) {
                 _alertMessage.value = "يجب تسجيل الدخول لإرسال التقييم"
+                return@launch
+            }
+            val ownedOrder = repository.getCustomerOrders(customerId).firstOrNull()?.firstOrNull { it.id == orderId }
+            if (ownedOrder == null || ownedOrder.orderStatus != OrderStatus.DELIVERED) {
+                _alertMessage.value = "لا يمكنك تقييم هذا الطلب"
                 return@launch
             }
             repository.submitReview(orderId, partnerRating, driverRating, notes, customerId)
@@ -374,12 +371,25 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
                 _alertMessage.value = "يجب تسجيل الدخول لإلغاء الطلب"
                 return@launch
             }
-            repository.cancelCustomerOrder(customerId, orderId)
-                .onSuccess {
-                    _trackedOrderId.value = null
-                    _alertMessage.value = "تم إلغاء الطلب بنجاح"
-                }
-                .onFailure { error -> _alertMessage.value = error.message ?: "تعذر إلغاء الطلب" }
+            val order = repository.getCustomerOrders(customerId).firstOrNull()?.firstOrNull { it.id == orderId }
+            if (order == null) {
+                _alertMessage.value = "لا يمكنك إلغاء هذا الطلب"
+                return@launch
+            }
+            if (order.orderStatus in setOf(OrderStatus.DELIVERED, OrderStatus.CANCELLED, OrderStatus.REJECTED)) {
+                _alertMessage.value = "لا يمكن إلغاء هذا الطلب الآن"
+                return@launch
+            }
+            repository.updateOrderStatus(
+                orderId = orderId,
+                newStatus = OrderStatus.CANCELLED,
+                actor = currentSession.value?.name ?: "العميل",
+                actorRole = "العميل",
+                reason = "إلغاء بناء على رغبة العميل"
+            ).onSuccess {
+                _trackedOrderId.value = null
+                _alertMessage.value = "تم إلغاء الطلب بنجاح"
+            }.onFailure { error -> _alertMessage.value = error.message ?: "تعذر إلغاء الطلب" }
         }
     }
 
