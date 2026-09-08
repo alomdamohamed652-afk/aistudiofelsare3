@@ -457,7 +457,11 @@ fun FalsareeApp(
             NotificationCenterSheet(
                 notifications = notifications,
                 onMarkAllRead = {
-                    coroutineScope.launch { viewModel.repository.markAllNotificationsRead(currentRole) }
+                    currentSession?.let { session ->
+                        coroutineScope.launch {
+                            viewModel.repository.markAllNotificationsReadForUser(currentRole, session.userId)
+                        }
+                    }
                 },
                 onDismiss = { showNotificationSheet = false }
             )
