@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.os.Build
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,12 +13,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.BuildConfig
 import com.example.core.designsystem.*
 import com.example.core.model.UserRole
 import com.example.ui.admin.AdminPortalScreen
@@ -44,7 +45,6 @@ fun FalsareeApp(
 
     val appSettings by viewModel.repository.appSettings.collectAsStateWithLifecycle(initialValue = null)
     val onboardingPages by viewModel.repository.activeOnboardingPages.collectAsStateWithLifecycle(initialValue = emptyList())
-
     val partners by viewModel.repository.allPartners.collectAsStateWithLifecycle(initialValue = emptyList())
     val products by viewModel.repository.allProducts.collectAsStateWithLifecycle(initialValue = emptyList())
     val orders by viewModel.repository.allOrders.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -82,14 +82,11 @@ fun FalsareeApp(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val categoryFilter by viewModel.selectedCategoryFilter.collectAsStateWithLifecycle()
     val onlyOpenFilter by viewModel.onlyOpenFilter.collectAsStateWithLifecycle()
-
     val alertMessage by viewModel.alertMessage.collectAsStateWithLifecycle()
 
     var showCartScreen by remember { mutableStateOf(false) }
     var showNotificationSheet by remember { mutableStateOf(false) }
-    var showRolePickerSheet by remember { mutableStateOf(false) }
 
-    // Alert handling
     LaunchedEffect(alertMessage) {
         alertMessage?.let { msg ->
             snackbarHostState.showSnackbar(msg)
@@ -100,55 +97,26 @@ fun FalsareeApp(
     FalsareeTheme {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
-            contentWindowInsets = WindowInsets.safeDrawing,
-            floatingActionButton = {
-                if (isUserLoggedIn) {
-                // Development role switcher; never available before authentication.
-                FloatingActionButton(
-                    onClick = { showRolePickerSheet = true },
-                    containerColor = BrandSecondary,
-                    contentColor = BrandAccent,
-                    modifier = Modifier
-                        .padding(bottom = if (currentRole == UserRole.CUSTOMER && !showCartScreen && selectedPartner == null) 64.dp else 16.dp)
-                        .testTag("global_role_switcher_fab")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(currentRole.iconEmoji, fontSize = 20.sp)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = currentRole.titleArabic,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-                }
-            }
+            contentWindowInsets = WindowInsets.safeDrawing
         ) { innerPadding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                // 1. Onboarding check (if enabled in settings and not completed)
                 if (appSettings?.onboardingEnabled == true && !isOnboardingCompleted) {
                     OnboardingScreen(
                         pages = onboardingPages,
                         onFinish = { viewModel.completeOnboarding() }
                     )
-                }
-                // 2. Auth Screen check
-                else if (!isUserLoggedIn) {
+                } else if (!isUserLoggedIn) {
                     AuthScreen(
-                        onLogin = { phone -> viewModel.login(phone) },
-                        onRegister = { name, phone, email -> viewModel.register(name, phone, email) }
+                        onLogin = { identifier, password -> viewModel.login(identifier, password) },
+                        onRegister = { name, phone, email, password, confirmPassword ->
+                            viewModel.register(name, phone, email, password, confirmPassword)
+                        }
                     )
-                }
-                // 3. Active Role UI
-                else {
+                } else {
                     when (currentRole) {
                         UserRole.CUSTOMER -> {
                             CustomerPortalView(
@@ -176,12 +144,8 @@ fun FalsareeApp(
                                 onCategorySelect = { viewModel.setCategoryFilter(it) },
                                 onlyOpenFilter = onlyOpenFilter,
                                 onToggleOnlyOpen = { viewModel.toggleOnlyOpenFilter() },
-                                onAddToCart = { partner, prod, qty, opts ->
-                                    viewModel.addToCart(partner, prod, qty, opts)
-                                },
-                                onUpdateCartQty = { prod, delta ->
-                                    viewModel.updateCartItemQuantity(prod, delta)
-                                },
+                                onAddToCart = { partner, prod, qty, opts -> viewModel.addToCart(partner, prod, qty, opts) },
+                                onUpdateCartQty = { prod, delta -> viewModel.updateCartItemQuantity(prod, delta) },
                                 onApplyCoupon = { viewModel.applyCoupon(it) },
                                 onClearCart = { viewModel.clearCart() },
                                 onConfirmOrder = { addr, notes, pay, receipt ->
@@ -199,9 +163,9 @@ fun FalsareeApp(
                                 onReviewOrder = { viewModel.openReviewDialog(it) },
                                 onOpenNotifications = { showNotificationSheet = true },
                                 unreadNotifications = unreadNotificationsCount,
-                                onAddAddress = { addr -> viewModel.addAddress(addr) },
-                                onDeleteAddress = { addr -> viewModel.deleteAddress(addr) },
-                                onCreateTicket = { ticket -> viewModel.createSupportTicket(ticket) },
+                                onAddAddress = { viewModel.addAddress(it) },
+                                onDeleteAddress = { viewModel.deleteAddress(it) },
+                                onCreateTicket = { viewModel.createSupportTicket(it) },
                                 onSwitchRole = { viewModel.switchRole(it) }
                             )
                         }
@@ -217,70 +181,49 @@ fun FalsareeApp(
                                 activityLogs = activityLogs,
                                 onUpdateOrderStatus = { id, st, reason, force ->
                                     coroutineScope.launch {
-                                        viewModel.repository.updateOrderStatus(
-                                            orderId = id,
-                                            newStatus = st,
-                                            actor = "مدير النظام",
-                                            actorRole = "الإدارة",
-                                            reason = reason,
-                                            isForceOverride = force
-                                        )
+                                        viewModel.repository.updateOrderStatus(id, st, "مدير النظام", "الإدارة", reason, force)
                                     }
                                 },
                                 onAssignDriver = { id, driver ->
                                     coroutineScope.launch {
-                                        viewModel.repository.assignDriverToOrder(
-                                            orderId = id,
-                                            driver = driver,
-                                            actor = "مدير النظام",
-                                            actorRole = "الإدارة"
-                                        )
+                                        viewModel.repository.assignDriverToOrder(id, driver, "مدير النظام", "الإدارة")
                                     }
                                 },
                                 onReviewTransfer = { id, approved, reason ->
                                     coroutineScope.launch {
-                                        viewModel.repository.reviewBankTransfer(
-                                            orderId = id,
-                                            isApproved = approved,
-                                            reason = reason,
-                                            actor = "قسم المالية"
-                                        )
+                                        viewModel.repository.reviewBankTransfer(id, approved, reason, "قسم المالية")
                                     }
                                 },
                                 onTogglePartnerStatus = { id, isOpen ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.setPartnerOpenStatus(id, isOpen)
-                                    }
+                                    coroutineScope.launch { viewModel.repository.setPartnerOpenStatus(id, isOpen) }
                                 },
                                 onToggleDriverStatus = { id, st ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.setDriverAvailability(id, st)
-                                    }
+                                    coroutineScope.launch { viewModel.repository.setDriverAvailability(id, st) }
                                 },
-                                onSaveHomeSection = { sec ->
-                                    coroutineScope.launch { viewModel.repository.saveHomeSection(sec) }
-                                },
-                                onDeleteHomeSection = { sec ->
-                                    coroutineScope.launch { viewModel.repository.deleteHomeSection(sec) }
-                                },
-                                onSaveOnboardingPage = { page ->
-                                    coroutineScope.launch { viewModel.repository.saveOnboardingPage(page) }
-                                },
-                                onDeleteOnboardingPage = { page ->
-                                    coroutineScope.launch { viewModel.repository.deleteOnboardingPage(page) }
-                                },
-                                onToggleOnboardingEnabled = { enabled ->
-                                    coroutineScope.launch { viewModel.repository.setOnboardingEnabled(enabled) }
-                                },
+                                onSaveHomeSection = { sec -> coroutineScope.launch { viewModel.repository.saveHomeSection(sec) } },
+                                onDeleteHomeSection = { sec -> coroutineScope.launch { viewModel.repository.deleteHomeSection(sec) } },
+                                onSaveOnboardingPage = { page -> coroutineScope.launch { viewModel.repository.saveOnboardingPage(page) } },
+                                onDeleteOnboardingPage = { page -> coroutineScope.launch { viewModel.repository.deleteOnboardingPage(page) } },
+                                onToggleOnboardingEnabled = { enabled -> coroutineScope.launch { viewModel.repository.setOnboardingEnabled(enabled) } },
                                 onSwitchRole = { viewModel.switchRole(it) }
                             )
                         }
 
                         UserRole.DRIVER -> {
-                            // Resolve driver from session — falls back to first driver in dev mode
-                            val activeDriver = drivers.find { it.id == activeDriverId } ?: drivers.firstOrNull()
-                            val driverActiveOrder = orders.find { it.driverId == activeDriver?.id && it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED }
-                            val openOrders = orders.filter { it.driverId == null && it.deliveryStatus == com.example.core.model.DeliveryStatus.WAITING_FOR_DRIVER && it.orderStatus !in listOf(com.example.core.model.OrderStatus.CANCELLED, com.example.core.model.OrderStatus.REJECTED) }
+                            val activeDriver = drivers.find { it.id == activeDriverId }
+                                ?: if (BuildConfig.DEBUG) drivers.firstOrNull() else null
+                            val driverActiveOrder = orders.find {
+                                it.driverId == activeDriver?.id &&
+                                    it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED
+                            }
+                            val openOrders = orders.filter {
+                                it.driverId == null &&
+                                    it.deliveryStatus == com.example.core.model.DeliveryStatus.WAITING_FOR_DRIVER &&
+                                    it.orderStatus !in listOf(
+                                        com.example.core.model.OrderStatus.CANCELLED,
+                                        com.example.core.model.OrderStatus.REJECTED
+                                    )
+                            }
                             val driverOrders = orders.filter { it.driverId == activeDriver?.id }
 
                             DriverPortalScreen(
@@ -289,21 +232,16 @@ fun FalsareeApp(
                                 openOrders = openOrders,
                                 driverOrders = driverOrders,
                                 payoutRequests = driverPayoutRequests,
-                                onRequestPayout = { amt -> viewModel.requestDriverPayout(activeDriver?.id ?: 1L, amt) },
+                                onRequestPayout = { amt -> viewModel.requestDriverPayout(amt) },
                                 onToggleAvailability = { st ->
-                                    if (activeDriver != null) {
-                                        coroutineScope.launch { viewModel.repository.setDriverAvailability(activeDriver.id, st) }
+                                    activeDriver?.let { driver ->
+                                        coroutineScope.launch { viewModel.repository.setDriverAvailability(driver.id, st) }
                                     }
                                 },
                                 onAcceptOrder = { ord ->
-                                    if (activeDriver != null) {
+                                    activeDriver?.let { driver ->
                                         coroutineScope.launch {
-                                            viewModel.repository.assignDriverToOrder(
-                                                orderId = ord.id,
-                                                driver = activeDriver,
-                                                actor = activeDriver.name,
-                                                actorRole = "المندوب"
-                                            )
+                                            viewModel.repository.assignDriverToOrder(ord.id, driver, driver.name, "المندوب")
                                         }
                                     }
                                 },
@@ -338,8 +276,8 @@ fun FalsareeApp(
                         }
 
                         UserRole.PARTNER -> {
-                            // Resolve partner from session — falls back to first partner in dev mode
-                            val activePartner = partners.find { it.id == activePartnerId } ?: partners.firstOrNull()
+                            val activePartner = partners.find { it.id == activePartnerId }
+                                ?: if (BuildConfig.DEBUG) partners.firstOrNull() else null
                             val partnerProducts = products.filter { it.partnerId == activePartner?.id }
 
                             PartnerPortalScreen(
@@ -349,60 +287,64 @@ fun FalsareeApp(
                                 products = partnerProducts,
                                 onSelectPartner = { viewModel.setActivePartnerId(it) },
                                 onToggleOpen = { isOpen ->
-                                    if (activePartner != null) {
-                                        coroutineScope.launch { viewModel.repository.setPartnerOpenStatus(activePartner.id, isOpen) }
+                                    activePartner?.let { partner ->
+                                        coroutineScope.launch { viewModel.repository.setPartnerOpenStatus(partner.id, isOpen) }
                                     }
                                 },
                                 onAcceptOrder = { ord ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateOrderStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.OrderStatus.APPROVED,
-                                            actor = activePartner?.name ?: "الشريك",
-                                            actorRole = "الشريك",
-                                            reason = "تم قبول الطلب وجاري التحضير"
-                                        )
+                                    activePartner?.let { partner ->
+                                        coroutineScope.launch {
+                                            viewModel.repository.updateOrderStatus(
+                                                orderId = ord.id,
+                                                newStatus = com.example.core.model.OrderStatus.APPROVED,
+                                                actor = partner.name,
+                                                actorRole = "الشريك",
+                                                reason = "تم قبول الطلب وجاري التحضير"
+                                            )
+                                        }
                                     }
                                 },
                                 onRejectOrder = { ord, reason ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateOrderStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.OrderStatus.REJECTED,
-                                            actor = activePartner?.name ?: "الشريك",
-                                            actorRole = "الشريك",
-                                            reason = reason
-                                        )
+                                    activePartner?.let { partner ->
+                                        coroutineScope.launch {
+                                            viewModel.repository.updateOrderStatus(
+                                                orderId = ord.id,
+                                                newStatus = com.example.core.model.OrderStatus.REJECTED,
+                                                actor = partner.name,
+                                                actorRole = "الشريك",
+                                                reason = reason
+                                            )
+                                        }
                                     }
                                 },
                                 onStartPreparing = { ord, _ ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateOrderStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.OrderStatus.PREPARING,
-                                            actor = activePartner?.name ?: "الشريك",
-                                            actorRole = "الشريك",
-                                            reason = "بدء إعداد الوجبة بالمطبخ"
-                                        )
+                                    activePartner?.let { partner ->
+                                        coroutineScope.launch {
+                                            viewModel.repository.updateOrderStatus(
+                                                orderId = ord.id,
+                                                newStatus = com.example.core.model.OrderStatus.PREPARING,
+                                                actor = partner.name,
+                                                actorRole = "الشريك",
+                                                reason = "بدء إعداد الطلب بالمطبخ"
+                                            )
+                                        }
                                     }
                                 },
                                 onReadyForPickup = { ord ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateOrderStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.OrderStatus.READY_FOR_PICKUP,
-                                            actor = activePartner?.name ?: "الشريك",
-                                            actorRole = "الشريك",
-                                            reason = "تم تغليف الطلب بالكامل وجاهز لاستلام المندوب"
-                                        )
+                                    activePartner?.let { partner ->
+                                        coroutineScope.launch {
+                                            viewModel.repository.updateOrderStatus(
+                                                orderId = ord.id,
+                                                newStatus = com.example.core.model.OrderStatus.READY_FOR_PICKUP,
+                                                actor = partner.name,
+                                                actorRole = "الشريك",
+                                                reason = "تم تجهيز الطلب وجاهز لاستلام المندوب"
+                                            )
+                                        }
                                     }
                                 },
-                                onSaveProduct = { prod ->
-                                    coroutineScope.launch { viewModel.repository.saveProduct(prod) }
-                                },
-                                onUpdateProductStatus = { id, st ->
-                                    coroutineScope.launch { viewModel.repository.updateProductStatus(id, st) }
-                                },
+                                onSaveProduct = { prod -> coroutineScope.launch { viewModel.repository.saveProduct(prod) } },
+                                onUpdateProductStatus = { id, st -> coroutineScope.launch { viewModel.repository.updateProductStatus(id, st) } },
                                 onSwitchRole = { viewModel.switchRole(it) }
                             )
                         }
@@ -411,36 +353,23 @@ fun FalsareeApp(
             }
         }
 
-        // Live Order Tracking Sheet (if trackedOrderId is set)
-        if (trackedOrderId != null) {
-            val order = orders.find { it.id == trackedOrderId }
+        if (trackedOrderId != null && currentRole == UserRole.CUSTOMER) {
+            val order = customerOrders.find { it.id == trackedOrderId }
             if (order != null) {
                 val orderItems by viewModel.repository.getOrderItems(order.id).collectAsStateWithLifecycle(initialValue = emptyList())
                 val orderLogs by viewModel.repository.getOrderActivityLogs(order.id).collectAsStateWithLifecycle(initialValue = emptyList())
-
                 LiveOrderTrackingSheet(
                     order = order,
                     items = orderItems,
                     activityLogs = orderLogs,
-                    onCancelOrder = {
-                        coroutineScope.launch {
-                            viewModel.repository.updateOrderStatus(
-                                orderId = order.id,
-                                newStatus = com.example.core.model.OrderStatus.CANCELLED,
-                                actor = "العميل",
-                                actorRole = "العميل",
-                                reason = "إلغاء بناء على رغبة العميل"
-                            )
-                        }
-                    },
+                    onCancelOrder = { viewModel.cancelCustomerOrder(order.id) },
                     onDismiss = { viewModel.trackOrder(null) }
                 )
             }
         }
 
-        // Review Dialog (if reviewingOrderId is set)
-        if (reviewingOrderId != null) {
-            val orderToReview = orders.find { it.id == reviewingOrderId }
+        if (reviewingOrderId != null && currentRole == UserRole.CUSTOMER) {
+            val orderToReview = customerOrders.find { it.id == reviewingOrderId }
             if (orderToReview != null) {
                 OrderReviewDialog(
                     order = orderToReview,
@@ -452,7 +381,6 @@ fun FalsareeApp(
             }
         }
 
-        // Notifications Sheet
         if (showNotificationSheet) {
             NotificationCenterSheet(
                 notifications = notifications,
@@ -465,68 +393,6 @@ fun FalsareeApp(
                 },
                 onDismiss = { showNotificationSheet = false }
             )
-        }
-
-        // Global Role Switcher Modal
-        if (showRolePickerSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showRolePickerSheet = false },
-                containerColor = SurfaceCard
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        "اختر واجهة النظام للتجربة والمعاينة ⚡",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    UserRole.values().forEach { r ->
-                        val isCurrent = currentRole == r
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clickable {
-                                    viewModel.switchRole(r)
-                                    showRolePickerSheet = false
-                                },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isCurrent) BrandPrimary.copy(alpha = 0.12f) else SurfaceBackground
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isCurrent) BrandPrimary else SurfaceBorder
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(r.iconEmoji, fontSize = 24.sp)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = r.titleArabic,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isCurrent) BrandPrimary else TextPrimary
-                                )
-                                Spacer(modifier = Modifier.weight(1f))
-                                if (isCurrent) {
-                                    StatusBadge(text = "نشط الآن", backgroundColor = BrandPrimary, textColor = Color.White)
-                                }
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
-            }
         }
     }
 }
@@ -557,11 +423,11 @@ fun CustomerPortalView(
     onCategorySelect: (com.example.core.model.PartnerType?) -> Unit,
     onlyOpenFilter: Boolean,
     onToggleOnlyOpen: () -> Unit,
-    onAddToCart: (partner: com.example.data.local.PartnerEntity, product: com.example.data.local.ProductEntity, quantity: Int, optionsSummary: String) -> Unit,
-    onUpdateCartQty: (product: com.example.data.local.ProductEntity, delta: Int) -> Unit,
+    onAddToCart: (com.example.data.local.PartnerEntity, com.example.data.local.ProductEntity, Int, String) -> Unit,
+    onUpdateCartQty: (com.example.data.local.ProductEntity, Int) -> Unit,
     onApplyCoupon: (String) -> Unit,
     onClearCart: () -> Unit,
-    onConfirmOrder: (address: String, notes: String, payment: com.example.core.model.PaymentMethod, receiptNote: String) -> Unit,
+    onConfirmOrder: (String, String, com.example.core.model.PaymentMethod, String) -> Unit,
     onSelectOrderToTrack: (Long) -> Unit,
     favoritePartnerIds: List<Long> = emptyList(),
     onToggleFavorite: (Long) -> Unit = {},
@@ -590,26 +456,19 @@ fun CustomerPortalView(
             onClearCart = onClearCart
         )
     } else if (selectedPartner != null) {
-        val partnerProducts = remember(products, selectedPartner) {
-            products.filter { it.partnerId == selectedPartner.id }
-        }
+        val partnerProducts = remember(products, selectedPartner) { products.filter { it.partnerId == selectedPartner.id } }
         PartnerDetailScreen(
             partner = selectedPartner,
             products = partnerProducts,
             onBack = { onSelectPartner(null) },
-            onAddToCart = { prod, qty, opts ->
-                onAddToCart(selectedPartner, prod, qty, opts)
-            },
+            onAddToCart = { prod, qty, opts -> onAddToCart(selectedPartner, prod, qty, opts) },
             onViewCart = { onToggleCart(true) },
             cartItemCount = totalCartItemsCount
         )
     } else {
         Scaffold(
             bottomBar = {
-                NavigationBar(
-                    containerColor = SurfaceCard,
-                    tonalElevation = 6.dp
-                ) {
+                NavigationBar(containerColor = SurfaceCard, tonalElevation = 6.dp) {
                     val tabs = listOf(
                         Triple("الرئيسية", Icons.Default.Home, 0),
                         Triple("البحث", Icons.Default.Search, 1),
@@ -617,36 +476,19 @@ fun CustomerPortalView(
                         Triple("طلباتي", Icons.Default.ReceiptLong, 3),
                         Triple("حسابي", Icons.Default.Person, 4)
                     )
-
                     tabs.forEach { (title, icon, idx) ->
                         val isSelected = customerTab == idx
                         NavigationBarItem(
                             selected = isSelected,
                             onClick = { onSelectTab(idx) },
-                            icon = {
-                                Icon(
-                                    imageVector = icon,
-                                    contentDescription = title,
-                                    tint = if (isSelected) BrandPrimary else TextSecondary
-                                )
-                            },
-                            label = {
-                                Text(
-                                    text = title,
-                                    color = if (isSelected) BrandPrimary else TextSecondary,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
+                            icon = { Icon(icon, contentDescription = title, tint = if (isSelected) BrandPrimary else TextSecondary) },
+                            label = { Text(title, color = if (isSelected) BrandPrimary else TextSecondary, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
                         )
                     }
                 }
             }
         ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
+            Box(Modifier.fillMaxSize().padding(innerPadding)) {
                 when (customerTab) {
                     0 -> CustomerHomeScreen(
                         sections = homeSections,
@@ -655,21 +497,14 @@ fun CustomerPortalView(
                         favoritePartnerIds = favoritePartnerIds,
                         onToggleFavorite = onToggleFavorite,
                         onPartnerClick = onSelectPartner,
-                        onCategoryClick = { type ->
-                            onCategorySelect(type)
-                            onSelectTab(1) // switch to search with filter
-                        },
-                        onProductClick = { prod ->
-                            val p = partners.find { it.id == prod.partnerId }
-                            if (p != null) onSelectPartner(p)
-                        },
+                        onCategoryClick = { type -> onCategorySelect(type); onSelectTab(1) },
+                        onProductClick = { prod -> partners.find { it.id == prod.partnerId }?.let(onSelectPartner) },
                         onSearchClick = { onSelectTab(1) },
                         onCartClick = { onToggleCart(true) },
                         cartItemCount = totalCartItemsCount,
                         onNotificationClick = onOpenNotifications,
                         unreadNotificationCount = unreadNotifications
                     )
-
                     1 -> CustomerSearchScreen(
                         partners = partners,
                         products = products,
@@ -680,12 +515,8 @@ fun CustomerPortalView(
                         onlyOpenFilter = onlyOpenFilter,
                         onToggleOnlyOpen = onToggleOnlyOpen,
                         onPartnerClick = onSelectPartner,
-                        onProductClick = { prod ->
-                            val p = partners.find { it.id == prod.partnerId }
-                            if (p != null) onSelectPartner(p)
-                        }
+                        onProductClick = { prod -> partners.find { it.id == prod.partnerId }?.let(onSelectPartner) }
                     )
-
                     2 -> CustomerFavoritesScreen(
                         partners = partners,
                         favoritePartnerIds = favoritePartnerIds,
@@ -693,13 +524,11 @@ fun CustomerPortalView(
                         onPartnerClick = onSelectPartner,
                         onExploreClick = { onSelectTab(1) }
                     )
-
                     3 -> CustomerOrdersScreen(
                         orders = orders,
                         onSelectOrderToTrack = onSelectOrderToTrack,
                         onReviewOrder = onReviewOrder
                     )
-
                     4 -> CustomerProfileScreen(
                         addresses = addresses,
                         coupons = coupons,
