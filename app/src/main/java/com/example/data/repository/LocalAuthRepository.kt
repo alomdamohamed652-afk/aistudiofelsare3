@@ -5,11 +5,15 @@ import com.example.core.model.UserRole
 import com.example.core.model.UserSession
 import com.example.data.local.FalsareeDao
 import com.example.data.local.UserEntity
+import com.example.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
 
 /**
  * Local implementation of AuthRepository backed by Room database.
@@ -25,8 +29,16 @@ class LocalAuthRepository(
     private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     override val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    override suspend fun login(phone: String, role: UserRole): Result<UserSession> = withContext(Dispatchers.IO) {
-        val existingUser = dao.getUserByPhone(phone)
+    override suspend fun login(identifier: String, password: String): Result<UserSession> = withContext(Dispatchers.IO) {
+        val normalizedIdentifier = identifier.trim()
+        if (normalizedIdentifier.isBlank() || password.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("رقم الهاتف أو البريد الإلكتروني وكلمة المرور مطلوبان"))
+        }
+        val existingUser = dao.getUserByPhone(normalizedIdentifier)
+            ?: dao.getUserByEmail(normalizedIdentifier)
+        if (existingUser != null && !verifyPassword(password, existingUser.passwordSalt, existingUser.passwordHash)) {
+            return@withContext Result.failure(IllegalArgumentException("بيانات تسجيل الدخول غير صحيحة"))
+        }
         val session = existingUser?.let {
             UserSession(
                 userId = it.id,
@@ -51,29 +63,39 @@ class LocalAuthRepository(
         name: String,
         phone: String,
         email: String,
+        password: String,
         role: UserRole
     ): Result<UserSession> = withContext(Dispatchers.IO) {
         try {
-            val existing = dao.getUserByPhone(phone)
-            if (existing != null) {
+            val normalizedName = name.trim()
+            val normalizedPhone = phone.trim()
+            val normalizedEmail = email.trim()
+            if (normalizedName.isBlank() || normalizedPhone.isBlank() || password.length < 8) {
+                return@withContext Result.failure(IllegalArgumentException("الاسم ورقم الهاتف وكلمة مرور من 8 أحرف على الأقل مطلوبة"))
+            }
+            if (dao.getUserByPhone(normalizedPhone) != null ||
+                (normalizedEmail.isNotBlank() && dao.getUserByEmail(normalizedEmail) != null)) {
                 return@withContext Result.failure(
-                    IllegalArgumentException("يوجد حساب مسجل بهذا الرقم")
+                    IllegalArgumentException("يوجد حساب مسجل بهذا الهاتف أو البريد الإلكتروني")
                 )
             }
+            val salt = generateSalt()
             val userId = dao.insertUser(
                 UserEntity(
-                    name = name,
-                    phone = phone,
-                    email = email,
+                    name = normalizedName,
+                    phone = normalizedPhone,
+                    email = normalizedEmail,
+                    passwordHash = hashPassword(password, salt),
+                    passwordSalt = salt,
                     role = role
                 )
             )
 
             val session = UserSession(
                 userId = userId,
-                name = name,
-                phone = phone,
-                email = email,
+                name = normalizedName,
+                phone = normalizedPhone,
+                email = normalizedEmail,
                 role = role,
                 associatedCustomerId = if (role == UserRole.CUSTOMER) userId else null
             )
@@ -92,16 +114,11 @@ class LocalAuthRepository(
     }
 
     override suspend fun switchDevelopmentRole(role: UserRole): UserSession {
-        val current = _currentSession.value
-        val updated = current?.copy(
+        check(BuildConfig.DEBUG) { "تبديل الأدوار متاح في نسخة التطوير فقط" }
+        val current = requireNotNull(_currentSession.value) { "يجب تسجيل الدخول أولاً" }
+        val updated = current.copy(
             role = role,
             associatedCustomerId = if (role == UserRole.CUSTOMER) current.userId else current.associatedCustomerId
-        ) ?: UserSession(
-            userId = 1L,
-            name = "مستخدم التطوير",
-            phone = "01000000000",
-            role = role,
-            associatedCustomerId = if (role == UserRole.CUSTOMER) 1L else null
         )
 
         _currentSession.value = updated
@@ -112,4 +129,14 @@ class LocalAuthRepository(
     override suspend fun restoreSession(): UserSession? {
         return _currentSession.value
     }
+
+    private fun generateSalt(): String = ByteArray(16).also(SecureRandom()::nextBytes)
+        .let(Base64.getEncoder()::encodeToString)
+
+    private fun hashPassword(password: String, salt: String): String = MessageDigest.getInstance("SHA-256")
+        .digest((salt + password).toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+
+    private fun verifyPassword(password: String, salt: String, expectedHash: String): Boolean =
+        MessageDigest.isEqual(hashPassword(password, salt).toByteArray(), expectedHash.toByteArray())
 }

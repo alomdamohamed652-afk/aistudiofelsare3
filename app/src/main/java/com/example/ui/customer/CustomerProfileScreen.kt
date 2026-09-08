@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.BuildConfig
 import com.example.core.designsystem.*
 import com.example.core.model.TicketCategory
 import com.example.core.model.UserRole
@@ -243,7 +244,7 @@ fun CustomerProfileScreen(
         }
 
         // Switch Role Portal (Admin, Driver, Partner, Customer)
-        item {
+        if (BuildConfig.DEBUG) item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),

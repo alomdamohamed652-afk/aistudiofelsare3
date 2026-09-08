@@ -85,16 +85,17 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Driver Payouts
-    val driverPayoutRequests: StateFlow<List<com.example.data.local.DriverPayoutRequestEntity>> = repository.driverPayoutRequests
+    val driverPayoutRequests: StateFlow<List<com.example.data.local.DriverPayoutRequestEntity>> = currentSession
+        .flatMapLatest { session -> session?.associatedDriverId?.let(repository::getDriverPayoutRequests) ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Active Partner ID — sourced from session when available, overridable by admin/dev tools
     private val _activePartnerId = MutableStateFlow<Long>(1L)
     val activePartnerId: StateFlow<Long> = _activePartnerId.asStateFlow()
 
-    // Active Driver ID — sourced from session when available; dev-mode role switch falls back to 1L
-    private val _activeDriverId = MutableStateFlow<Long>(1L)
-    val activeDriverId: StateFlow<Long> = _activeDriverId.asStateFlow()
+    // Active Driver ID is available only when the authenticated session is linked to a driver.
+    private val _activeDriverId = MutableStateFlow<Long?>(null)
+    val activeDriverId: StateFlow<Long?> = _activeDriverId.asStateFlow()
 
     // --- Cart State (Single Partner Rule Enforced) ---
     private val _cartPartner = MutableStateFlow<PartnerEntity?>(null)
@@ -157,20 +158,24 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun trackOrder(orderId: Long?) {
-        _trackedOrderId.value = orderId
+        if (orderId == null || customerOrders.value.any { it.id == orderId }) {
+            _trackedOrderId.value = orderId
+        } else {
+            _alertMessage.value = "لا يمكنك عرض طلب مستخدم آخر"
+        }
     }
 
     fun setActivePartnerId(id: Long) {
         _activePartnerId.value = id
     }
 
-    fun login(phone: String) {
-        if (phone.isBlank()) {
-            _alertMessage.value = "أدخل رقم الهاتف"
+    fun login(identifier: String, password: String) {
+        if (identifier.isBlank() || password.isBlank()) {
+            _alertMessage.value = "أدخل رقم الهاتف أو البريد الإلكتروني وكلمة المرور"
             return
         }
         viewModelScope.launch {
-            authRepository.login(phone.trim(), UserRole.CUSTOMER)
+            authRepository.login(identifier.trim(), password)
                 .onSuccess {
                     _customerSelectedTab.value = 0
                 }
@@ -180,9 +185,9 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun register(name: String, phone: String, email: String) {
-        if (name.isBlank() || phone.isBlank()) {
-            _alertMessage.value = "الاسم ورقم الهاتف مطلوبان"
+    fun register(name: String, phone: String, email: String, password: String, confirmation: String) {
+        if (password != confirmation) {
+            _alertMessage.value = "كلمتا المرور غير متطابقتين"
             return
         }
         viewModelScope.launch {
@@ -190,6 +195,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
                 name = name.trim(),
                 phone = phone.trim(),
                 email = email.trim(),
+                password = password,
                 role = UserRole.CUSTOMER
             ).onFailure { error ->
                 _alertMessage.value = error.message ?: "تعذر إنشاء الحساب"
@@ -341,11 +347,31 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun openReviewDialog(orderId: Long) {
-        _reviewingOrderId.value = orderId
+        if (customerOrders.value.any { it.id == orderId }) {
+            _reviewingOrderId.value = orderId
+        } else {
+            _alertMessage.value = "لا يمكنك تقييم طلب مستخدم آخر"
+        }
     }
 
     fun closeReviewDialog() {
         _reviewingOrderId.value = null
+    }
+
+    fun cancelCustomerOrder(orderId: Long) {
+        viewModelScope.launch {
+            if (!customerOrders.value.any { it.id == orderId }) {
+                _alertMessage.value = "لا يمكنك إلغاء طلب مستخدم آخر"
+                return@launch
+            }
+            repository.updateOrderStatus(
+                orderId = orderId,
+                newStatus = OrderStatus.CANCELLED,
+                actor = currentSession.value?.name ?: "العميل",
+                actorRole = "العميل",
+                reason = "إلغاء بناء على رغبة العميل"
+            ).onFailure { _alertMessage.value = it.message ?: "تعذر إلغاء الطلب" }
+        }
     }
 
     fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String) {
@@ -356,8 +382,11 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
                 return@launch
             }
             repository.submitReview(orderId, partnerRating, driverRating, notes, customerId)
-            _reviewingOrderId.value = null
-            _alertMessage.value = "شكراً لتقييمك! نسعد بخدمتك دائماً ⚡"
+                .onSuccess {
+                    _reviewingOrderId.value = null
+                    _alertMessage.value = "شكراً لتقييمك! نسعد بخدمتك دائماً ⚡"
+                }
+                .onFailure { _alertMessage.value = it.message ?: "تعذر إرسال التقييم" }
         }
     }
 
@@ -393,6 +422,10 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
                 _alertMessage.value = "يجب تسجيل الدخول لإنشاء تذكرة دعم"
                 return@launch
             }
+            if (ticket.orderId != null && customerOrders.value.none { it.id == ticket.orderId }) {
+                _alertMessage.value = "لا يمكنك إنشاء تذكرة لطلب مستخدم آخر"
+                return@launch
+            }
             repository.createTicket(
                 ticket.copy(
                     id = 0L,
@@ -404,10 +437,29 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun requestDriverPayout(driverId: Long, amount: Double) {
+    fun requestDriverPayout(amount: Double) {
         viewModelScope.launch {
+            val driverId = currentSession.value?.associatedDriverId
+            if (driverId == null) {
+                _alertMessage.value = "لا توجد هوية مندوب مرتبطة بهذه الجلسة"
+                return@launch
+            }
             repository.requestDriverPayout(driverId, amount)
             _alertMessage.value = "تم إرسال طلب سحب ${amount.toInt()} جنيه بنجاح للإدارة 💵"
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            authRepository.logout()
+            clearCart()
+            _trackedOrderId.value = null
+            _reviewingOrderId.value = null
+            _selectedPartner.value = null
+            _selectedProduct.value = null
+            _customerSelectedTab.value = 0
+            _driverSelectedTab.value = 0
+            _activeDriverId.value = null
         }
     }
 

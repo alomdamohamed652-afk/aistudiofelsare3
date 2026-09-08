@@ -15,6 +15,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM users WHERE phone = :phone LIMIT 1")
     suspend fun getUserByPhone(phone: String): UserEntity?
 
+    @Query("SELECT * FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1")
+    suspend fun getUserByEmail(email: String): UserEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUser(user: UserEntity): Long
 
@@ -259,4 +262,3 @@ interface FalsareeDao {
     @Query("SELECT * FROM driver_payout_requests ORDER BY createdAt DESC")
     fun getAllPayoutRequests(): Flow<List<DriverPayoutRequestEntity>>
 }
-

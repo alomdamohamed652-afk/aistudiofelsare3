@@ -28,8 +28,8 @@ import com.example.core.designsystem.*
 
 @Composable
 fun AuthScreen(
-    onLogin: (String) -> Unit,
-    onRegister: (name: String, phone: String, email: String) -> Unit,
+    onLogin: (identifier: String, password: String) -> Unit,
+    onRegister: (name: String, phone: String, email: String, password: String, confirmation: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Login, 1: Register
@@ -189,7 +189,7 @@ fun AuthScreen(
 
                 AppButton(
                     text = "تسجيل الدخول",
-                    onClick = { onLogin(phoneOrEmail) },
+                    onClick = { onLogin(phoneOrEmail, password) },
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "auth_login_submit_button"
                 )
@@ -255,7 +255,7 @@ fun AuthScreen(
 
                 AppButton(
                     text = "إنشاء حساب جديد ⚡",
-                    onClick = { onRegister(regName, regPhone, regEmail) },
+                    onClick = { onRegister(regName, regPhone, regEmail, regPassword, regConfirmPassword) },
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "auth_reg_submit_button"
                 )
@@ -346,7 +346,7 @@ fun AuthScreen(
                         } else {
                             showForgotPasswordDialog = false
                             forgotStep = 1
-                            onLogin(forgotPhone)
+                            // Password reset requires a verified backend and is not performed locally.
                         }
                     }
                 )
