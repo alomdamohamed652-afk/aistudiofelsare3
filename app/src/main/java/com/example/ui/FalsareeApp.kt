@@ -338,8 +338,8 @@ fun FalsareeApp(
                         }
 
                         UserRole.PARTNER -> {
-                            // Resolve partner from session — falls back to first partner in dev mode
-                            val activePartner = partners.find { it.id == activePartnerId } ?: partners.firstOrNull()
+                            // Resolve partner strictly from the authenticated session identity.
+                            val activePartner = activePartnerId?.let { id -> partners.find { it.id == id } }
                             val partnerProducts = products.filter { it.partnerId == activePartner?.id }
 
                             PartnerPortalScreen(
