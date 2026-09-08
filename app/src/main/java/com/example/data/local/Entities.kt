@@ -10,6 +10,7 @@ data class UserEntity(
     val name: String,
     val phone: String,
     val email: String = "",
+    val passwordHash: String = "",
     val role: UserRole = UserRole.CUSTOMER,
     val associatedDriverId: Long? = null,
     val associatedPartnerId: Long? = null,
