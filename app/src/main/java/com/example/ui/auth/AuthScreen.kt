@@ -33,8 +33,8 @@ fun AuthScreen(
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Login, 1: Register
-    var phoneOrEmail by remember { mutableStateOf("01011122233") }
-    var password by remember { mutableStateOf("123456") }
+    var phoneOrEmail by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var rememberSession by remember { mutableStateOf(true) }
 
