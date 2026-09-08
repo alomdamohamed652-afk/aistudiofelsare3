@@ -351,11 +351,23 @@ fun FalsareeApp(
                         }
 
                         UserRole.PARTNER -> {
-                            // Resolve partner from session — falls back to first partner in dev mode
-                            val activePartner = partners.find { it.id == activePartnerId } ?: partners.firstOrNull()
-                            val partnerProducts = products.filter { it.partnerId == activePartner?.id }
+                            // Partner identity must come from the authenticated session.
+                            val activePartner = activePartnerId?.let { id -> partners.find { it.id == id } }
+                            val partnerProducts = activePartner?.let { partner ->
+                                products.filter { it.partnerId == partner.id }
+                            } ?: emptyList()
 
-                            PartnerPortalScreen(
+                            if (activePartner == null) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        "هذا الحساب غير مرتبط بشريك بعد. يرجى التواصل مع الإدارة.",
+                                        modifier = Modifier.padding(24.dp)
+                                    )
+                                }
+                            } else PartnerPortalScreen(
                                 allPartners = partners,
                                 activePartner = activePartner,
                                 orders = orders,
