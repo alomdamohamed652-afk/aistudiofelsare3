@@ -132,6 +132,14 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.seedInitialDataIfEmpty()
         }
+
+        // Keep operational identities synchronized with the authenticated session.
+        viewModelScope.launch {
+            currentSession.collect { session ->
+                _activeDriverId.value = session?.associatedDriverId
+                _activePartnerId.value = session?.associatedPartnerId
+            }
+        }
     }
 
     // --- Role Switching (dev tool — routes through auth for session consistency) ---
