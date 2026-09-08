@@ -63,6 +63,12 @@ interface FalsareeDao {
     @Query("SELECT * FROM orders WHERE customerId = :customerId ORDER BY createdAt DESC")
     fun getOrdersForCustomer(customerId: Long): Flow<List<OrderEntity>>
 
+    @Query("SELECT * FROM orders WHERE customerId = :customerId AND id = :orderId LIMIT 1")
+    suspend fun getOrderForCustomer(customerId: Long, orderId: Long): OrderEntity?
+
+    @Query("SELECT * FROM orders WHERE customerId = :customerId AND id = :orderId LIMIT 1")
+    fun getOrderFlowForCustomer(customerId: Long, orderId: Long): Flow<OrderEntity?>
+
     @Query("SELECT * FROM orders WHERE partnerId = :partnerId ORDER BY createdAt DESC")
     fun getOrdersForPartner(partnerId: Long): Flow<List<OrderEntity>>
 
@@ -259,4 +265,3 @@ interface FalsareeDao {
     @Query("SELECT * FROM driver_payout_requests ORDER BY createdAt DESC")
     fun getAllPayoutRequests(): Flow<List<DriverPayoutRequestEntity>>
 }
-
