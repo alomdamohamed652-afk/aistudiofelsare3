@@ -30,6 +30,7 @@ import com.example.core.designsystem.*
 fun AuthScreen(
     onLogin: (identifier: String, password: String) -> Unit,
     onRegister: (name: String, phone: String, email: String, password: String, confirmation: String) -> Unit,
+    onRequestOtp: (phone: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Login, 1: Register
@@ -150,7 +151,16 @@ fun AuthScreen(
                     testTag = "auth_login_password_input"
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                TextButton(
+                    onClick = { onRequestOtp(phoneOrEmail.trim()) },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text("إرسال رمز التحقق التجريبي")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 AppButton(
                     text = "تسجيل الدخول",
