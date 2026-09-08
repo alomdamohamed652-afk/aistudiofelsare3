@@ -39,6 +39,7 @@ fun CustomerProfileScreen(
 ) {
     var showAddAddressDialog by remember { mutableStateOf(false) }
     var showCreateTicketDialog by remember { mutableStateOf(false) }
+    var showDesignSystemDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -290,6 +291,59 @@ fun CustomerProfileScreen(
                 }
             }
         }
+
+        // Falsaree Design System Guide Item
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showDesignSystemDialog = true }
+                    .testTag("open_design_system_button"),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, FalsareeBluePrimary.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(FalsareeBlueLight),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🎨", fontSize = 22.sp)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "دليل نظام التصميم (Design System)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = FalsareeGray900
+                        )
+                        Text(
+                            text = "لوحة الألوان الستة • خطوط Cairo & IBM Plex • اتجاه RTL",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = FalsareeGray600
+                        )
+                    }
+                    Text(
+                        text = "عرض 👈",
+                        color = FalsareeBluePrimary,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
+        }
+    }
+
+    // Design System Showcase Dialog
+    if (showDesignSystemDialog) {
+        FalsareeDesignSystemDialog(onDismiss = { showDesignSystemDialog = false })
     }
 
     // Add Address Dialog
