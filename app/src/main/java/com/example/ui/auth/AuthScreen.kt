@@ -25,11 +25,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.designsystem.*
-import com.example.core.model.UserRole
 
 @Composable
 fun AuthScreen(
-    onLoginSuccess: (UserRole) -> Unit,
+    onLogin: (String) -> Unit,
+    onRegister: (name: String, phone: String, email: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Login, 1: Register
@@ -189,7 +189,7 @@ fun AuthScreen(
 
                 AppButton(
                     text = "تسجيل الدخول",
-                    onClick = { onLoginSuccess(UserRole.CUSTOMER) },
+                    onClick = { onLogin(phoneOrEmail) },
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "auth_login_submit_button"
                 )
@@ -255,7 +255,7 @@ fun AuthScreen(
 
                 AppButton(
                     text = "إنشاء حساب جديد ⚡",
-                    onClick = { onLoginSuccess(UserRole.CUSTOMER) },
+                    onClick = { onRegister(regName, regPhone, regEmail) },
                     modifier = Modifier.fillMaxWidth(),
                     testTag = "auth_reg_submit_button"
                 )
@@ -264,68 +264,7 @@ fun AuthScreen(
 
         Spacer(modifier = Modifier.height(28.dp))
 
-        // Quick Role Switcher for Test & Showcase
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = BrandSecondaryLight),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "🚀", fontSize = 18.sp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "الدخول السريع لتجربة كل الواجهات:",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AppButton(
-                        text = "👤 العميل",
-                        onClick = { onLoginSuccess(UserRole.CUSTOMER) },
-                        modifier = Modifier.weight(1f),
-                        containerColor = BrandPrimary,
-                        testTag = "quick_customer_role"
-                    )
-                    AppButton(
-                        text = "👑 الإدارة",
-                        onClick = { onLoginSuccess(UserRole.ADMIN) },
-                        modifier = Modifier.weight(1f),
-                        containerColor = Color(0xFF6366F1),
-                        testTag = "quick_admin_role"
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AppButton(
-                        text = "🛵 المندوب",
-                        onClick = { onLoginSuccess(UserRole.DRIVER) },
-                        modifier = Modifier.weight(1f),
-                        containerColor = StatusGreen,
-                        testTag = "quick_driver_role"
-                    )
-                    AppButton(
-                        text = "🏪 الشريك",
-                        onClick = { onLoginSuccess(UserRole.PARTNER) },
-                        modifier = Modifier.weight(1f),
-                        containerColor = StatusYellow,
-                        testTag = "quick_partner_role"
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
     }
 
     // Forgot Password Flow Dialog
@@ -407,7 +346,7 @@ fun AuthScreen(
                         } else {
                             showForgotPasswordDialog = false
                             forgotStep = 1
-                            onLoginSuccess(UserRole.CUSTOMER)
+                            onLogin(forgotPhone)
                         }
                     }
                 )
