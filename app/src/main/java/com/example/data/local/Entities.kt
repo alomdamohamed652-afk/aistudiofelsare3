@@ -9,8 +9,10 @@ data class UserEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
     val phone: String,
-    val email: String,
+    val email: String = "",
     val role: UserRole = UserRole.CUSTOMER,
+    val associatedDriverId: Long? = null,
+    val associatedPartnerId: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -150,6 +152,7 @@ data class DriverProfileEntity(
 @Entity(tableName = "support_tickets")
 data class SupportTicketEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val customerId: Long = 1L,
     val ticketNumber: String,
     val customerName: String,
     val orderId: Long? = null,
@@ -163,6 +166,7 @@ data class SupportTicketEntity(
 @Entity(tableName = "customer_addresses")
 data class CustomerAddressEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val customerId: Long = 1L,
     val label: String, // منزل، عمل، آخر
     val area: String,
     val street: String,
@@ -176,6 +180,7 @@ data class CustomerAddressEntity(
 @Entity(tableName = "notifications")
 data class NotificationEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val targetUserId: Long? = null,
     val targetRole: UserRole = UserRole.CUSTOMER,
     val category: NotificationCategory = NotificationCategory.ORDER,
     val title: String,
@@ -197,6 +202,7 @@ data class AppSettingsEntity(
 @Entity(tableName = "favorite_partners")
 data class FavoritePartnerEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val customerId: Long = 1L,
     val partnerId: Long,
     val createdAt: Long = System.currentTimeMillis()
 )
@@ -204,6 +210,7 @@ data class FavoritePartnerEntity(
 @Entity(tableName = "order_reviews")
 data class OrderReviewEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val customerId: Long = 1L,
     val orderId: Long,
     val partnerRating: Int = 5,
     val driverRating: Int = 5,

@@ -68,6 +68,8 @@ fun FalsareeApp(
     val reviewingOrderId by viewModel.reviewingOrderId.collectAsStateWithLifecycle()
     val favoritePartnerIds by viewModel.favoritePartnerIds.collectAsStateWithLifecycle()
     val driverPayoutRequests by viewModel.driverPayoutRequests.collectAsStateWithLifecycle()
+    val activeDriverId by viewModel.activeDriverId.collectAsStateWithLifecycle()
+    val activePartnerId by viewModel.activePartnerId.collectAsStateWithLifecycle()
 
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val categoryFilter by viewModel.selectedCategoryFilter.collectAsStateWithLifecycle()
@@ -272,7 +274,8 @@ fun FalsareeApp(
                         }
 
                         UserRole.DRIVER -> {
-                            val activeDriver = drivers.firstOrNull()
+                            // Resolve driver from session — falls back to first driver in dev mode
+                            val activeDriver = drivers.find { it.id == activeDriverId } ?: drivers.firstOrNull()
                             val driverActiveOrder = orders.find { it.driverId == activeDriver?.id && it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED }
                             val openOrders = orders.filter { it.driverId == null && it.deliveryStatus == com.example.core.model.DeliveryStatus.WAITING_FOR_DRIVER && it.orderStatus !in listOf(com.example.core.model.OrderStatus.CANCELLED, com.example.core.model.OrderStatus.REJECTED) }
                             val driverOrders = orders.filter { it.driverId == activeDriver?.id }
@@ -332,7 +335,8 @@ fun FalsareeApp(
                         }
 
                         UserRole.PARTNER -> {
-                            val activePartner = partners.firstOrNull()
+                            // Resolve partner from session — falls back to first partner in dev mode
+                            val activePartner = partners.find { it.id == activePartnerId } ?: partners.firstOrNull()
                             val partnerProducts = products.filter { it.partnerId == activePartner?.id }
 
                             PartnerPortalScreen(

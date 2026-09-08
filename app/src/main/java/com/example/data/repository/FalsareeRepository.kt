@@ -43,22 +43,28 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val allAddresses: Flow<List<CustomerAddressEntity>> = dao.getAllAddresses()
 
     fun getNotificationsForRole(role: UserRole): Flow<List<NotificationEntity>> = dao.getNotificationsForRole(role)
+    fun getNotificationsForUser(role: UserRole, userId: Long): Flow<List<NotificationEntity>> = dao.getNotificationsForUser(role, userId)
     fun getUnreadNotificationsCount(role: UserRole): Flow<Int> = dao.getUnreadNotificationsCount(role)
+    fun getUnreadNotificationsCountForUser(role: UserRole, userId: Long): Flow<Int> = dao.getUnreadNotificationsCountForUser(role, userId)
     val appSettings: Flow<AppSettingsEntity?> = dao.getSettings()
     val favoritePartnerIds: Flow<List<Long>> = dao.getFavoritePartnerIds()
+    fun getFavoritePartnerIdsForCustomer(customerId: Long): Flow<List<Long>> = dao.getFavoritePartnerIdsForCustomer(customerId)
     val driverPayoutRequests: Flow<List<DriverPayoutRequestEntity>> = dao.getAllPayoutRequests()
 
-    suspend fun toggleFavorite(partnerId: Long, isFav: Boolean) = withContext(Dispatchers.IO) {
+    fun getAddressesForCustomer(customerId: Long): Flow<List<CustomerAddressEntity>> = dao.getAddressesForCustomer(customerId)
+
+    suspend fun toggleFavorite(partnerId: Long, isFav: Boolean, customerId: Long = 1L) = withContext(Dispatchers.IO) {
         if (isFav) {
-            dao.removeFavorite(partnerId)
+            dao.removeFavoriteForCustomer(partnerId, customerId)
         } else {
-            dao.addFavorite(FavoritePartnerEntity(partnerId = partnerId))
+            dao.addFavorite(FavoritePartnerEntity(partnerId = partnerId, customerId = customerId))
         }
     }
 
-    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String) = withContext(Dispatchers.IO) {
+    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String, customerId: Long = 1L) = withContext(Dispatchers.IO) {
         dao.insertReview(
             OrderReviewEntity(
+                customerId = customerId,
                 orderId = orderId,
                 partnerRating = partnerRating,
                 driverRating = driverRating,

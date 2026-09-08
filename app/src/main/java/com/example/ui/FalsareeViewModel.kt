@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.core.model.*
 import com.example.data.local.*
 import com.example.data.repository.FalsareeRepository
+import com.example.data.repository.LocalAuthRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -13,6 +14,10 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     private val database = FalsareeDatabase.getDatabase(application)
     val repository = FalsareeRepository(database.dao())
+    val authRepository = LocalAuthRepository(database.dao())
+
+    // Current authenticated session — drives all user-specific data
+    val currentSession: StateFlow<UserSession?> = authRepository.currentSession
 
     // --- Active App Navigation & Role State ---
     private val _currentRole = MutableStateFlow(UserRole.CUSTOMER)
@@ -56,11 +61,11 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     val driverPayoutRequests: StateFlow<List<com.example.data.local.DriverPayoutRequestEntity>> = repository.driverPayoutRequests
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Admin Selected Partner for Partner App Demo
+    // Active Partner ID — sourced from session when available, overridable by admin/dev tools
     private val _activePartnerId = MutableStateFlow<Long>(1L)
     val activePartnerId: StateFlow<Long> = _activePartnerId.asStateFlow()
 
-    // Active Driver ID
+    // Active Driver ID — sourced from session when available; dev-mode role switch falls back to 1L
     private val _activeDriverId = MutableStateFlow<Long>(1L)
     val activeDriverId: StateFlow<Long> = _activeDriverId.asStateFlow()
 
@@ -100,9 +105,14 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // --- Role Switching ---
+    // --- Role Switching (dev tool — routes through auth for session consistency) ---
     fun switchRole(role: UserRole) {
         _currentRole.value = role
+        viewModelScope.launch {
+            val updatedSession = authRepository.switchDevelopmentRole(role)
+            updatedSession.associatedDriverId?.let { _activeDriverId.value = it }
+            updatedSession.associatedPartnerId?.let { _activePartnerId.value = it }
+        }
     }
 
     fun setCustomerTab(tabIndex: Int) {
@@ -224,8 +234,9 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         val optionsSummary = _cartOptions.value.values.joinToString(", ")
 
         viewModelScope.launch {
+            val customerId = currentSession.value?.associatedCustomerId ?: 1L
             val res = repository.placeOrder(
-                customerId = 1L,
+                customerId = customerId,
                 customerName = customerName,
                 customerPhone = customerPhone,
                 partner = partner,
@@ -255,8 +266,9 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleFavorite(partnerId: Long) {
         viewModelScope.launch {
+            val customerId = currentSession.value?.associatedCustomerId ?: 1L
             val isFav = favoritePartnerIds.value.contains(partnerId)
-            repository.toggleFavorite(partnerId, isFav)
+            repository.toggleFavorite(partnerId, isFav, customerId)
             _alertMessage.value = if (isFav) "تمت الإزالة من المفضلة" else "تمت الإضافة إلى المفضلة ❤️"
         }
     }
@@ -271,7 +283,8 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String) {
         viewModelScope.launch {
-            repository.submitReview(orderId, partnerRating, driverRating, notes)
+            val customerId = currentSession.value?.associatedCustomerId ?: 1L
+            repository.submitReview(orderId, partnerRating, driverRating, notes, customerId)
             _reviewingOrderId.value = null
             _alertMessage.value = "شكراً لتقييمك! نسعد بخدمتك دائماً ⚡"
         }

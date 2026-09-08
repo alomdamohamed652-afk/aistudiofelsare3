@@ -8,6 +8,19 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface FalsareeDao {
 
+    // --- Users ---
+    @Query("SELECT * FROM users WHERE id = :id")
+    suspend fun getUserById(id: Long): UserEntity?
+
+    @Query("SELECT * FROM users WHERE phone = :phone LIMIT 1")
+    suspend fun getUserByPhone(phone: String): UserEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUser(user: UserEntity): Long
+
+    @Update
+    suspend fun updateUser(user: UserEntity)
+
     // --- Partners ---
     @Query("SELECT * FROM partners ORDER BY rating DESC")
     fun getAllPartners(): Flow<List<PartnerEntity>>
@@ -163,6 +176,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM customer_addresses ORDER BY isDefault DESC, id ASC")
     fun getAllAddresses(): Flow<List<CustomerAddressEntity>>
 
+    @Query("SELECT * FROM customer_addresses WHERE customerId = :customerId ORDER BY isDefault DESC, id ASC")
+    fun getAddressesForCustomer(customerId: Long): Flow<List<CustomerAddressEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAddress(address: CustomerAddressEntity)
 
@@ -173,8 +189,14 @@ interface FalsareeDao {
     suspend fun deleteAddress(address: CustomerAddressEntity)
 
     // --- Notifications ---
+    @Query("SELECT * FROM notifications WHERE targetRole = :role OR targetUserId = :userId ORDER BY createdAt DESC")
+    fun getNotificationsForUser(role: UserRole, userId: Long): Flow<List<NotificationEntity>>
+
     @Query("SELECT * FROM notifications WHERE targetRole = :role ORDER BY createdAt DESC")
     fun getNotificationsForRole(role: UserRole): Flow<List<NotificationEntity>>
+
+    @Query("SELECT COUNT(*) FROM notifications WHERE (targetRole = :role OR targetUserId = :userId) AND isRead = 0")
+    fun getUnreadNotificationsCountForUser(role: UserRole, userId: Long): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM notifications WHERE targetRole = :role AND isRead = 0")
     fun getUnreadNotificationsCount(role: UserRole): Flow<Int>
@@ -184,6 +206,9 @@ interface FalsareeDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotifications(notifications: List<NotificationEntity>)
+
+    @Query("UPDATE notifications SET isRead = 1 WHERE targetRole = :role OR targetUserId = :userId")
+    suspend fun markAllNotificationsAsReadForUser(role: UserRole, userId: Long)
 
     @Query("UPDATE notifications SET isRead = 1 WHERE targetRole = :role")
     suspend fun markAllNotificationsAsRead(role: UserRole)
@@ -202,11 +227,17 @@ interface FalsareeDao {
     @Query("SELECT partnerId FROM favorite_partners")
     fun getFavoritePartnerIds(): Flow<List<Long>>
 
+    @Query("SELECT partnerId FROM favorite_partners WHERE customerId = :customerId")
+    fun getFavoritePartnerIdsForCustomer(customerId: Long): Flow<List<Long>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addFavorite(favorite: FavoritePartnerEntity)
 
     @Query("DELETE FROM favorite_partners WHERE partnerId = :partnerId")
     suspend fun removeFavorite(partnerId: Long)
+
+    @Query("DELETE FROM favorite_partners WHERE partnerId = :partnerId AND customerId = :customerId")
+    suspend fun removeFavoriteForCustomer(partnerId: Long, customerId: Long)
 
     // --- Order Reviews ---
     @Insert(onConflict = OnConflictStrategy.REPLACE)

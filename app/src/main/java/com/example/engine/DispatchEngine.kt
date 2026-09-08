@@ -9,29 +9,66 @@ import com.example.data.local.OrderEntity
 
 object DispatchEngine {
 
+    // Cursor keeping track of the last dispatched driver ID for true Round-Robin rotation
+    @Volatile
+    var lastDispatchedDriverId: Long = 0L
+        private set
+
     /**
-     * Finds candidate driver under Round Robin or Open dispatch.
+     * Resets or sets the cursor position for testing or reconfiguration.
+     */
+    fun setCursor(driverId: Long) {
+        lastDispatchedDriverId = driverId
+    }
+
+    /**
+     * Finds candidate driver under True Round Robin, Open dispatch, or Manual assignment.
+     * True Round Robin rotates: Driver A -> Driver B -> Driver C -> Driver A.
      */
     fun selectCandidateDriver(
         drivers: List<DriverProfileEntity>,
-        mode: DispatchMode
+        mode: DispatchMode,
+        targetWorkingArea: String? = null
     ): DriverProfileEntity? {
-        val available = drivers.filter { it.status == DriverStatus.AVAILABLE }
-        if (available.isEmpty()) return null
+        val eligible = drivers.filter { isDriverEligible(it, targetWorkingArea) }
+        if (eligible.isEmpty()) return null
 
         return when (mode) {
             DispatchMode.ROUND_ROBIN -> {
-                // Round robin prioritizes available driver with least completed orders or first in queue
-                available.minByOrNull { it.completedOrdersCount } ?: available.first()
+                // Find eligible drivers sorted deterministically by ID
+                val sortedDrivers = eligible.sortedBy { it.id }
+                
+                // Find the first eligible driver whose ID is strictly greater than the cursor
+                val nextDriver = sortedDrivers.firstOrNull { it.id > lastDispatchedDriverId }
+                    ?: sortedDrivers.first() // Wrap around to the beginning of the queue
+
+                // Advance the cursor
+                lastDispatchedDriverId = nextDriver.id
+                nextDriver
             }
             DispatchMode.OPEN_DISPATCH -> {
-                // Any available driver can accept
-                available.firstOrNull()
+                // All eligible drivers are notified; candidate placeholder is the first ready
+                eligible.firstOrNull()
             }
             DispatchMode.MANUAL_ASSIGNMENT -> {
                 null // Admin assigns manually
             }
         }
+    }
+
+    /**
+     * Strict eligibility check for a driver to receive order assignments.
+     */
+    fun isDriverEligible(
+        driver: DriverProfileEntity,
+        targetWorkingArea: String? = null
+    ): Boolean {
+        if (driver.status != DriverStatus.AVAILABLE) return false
+        if (driver.currentOrderId != null) return false
+        if (targetWorkingArea != null && driver.workingArea.isNotBlank() && !driver.workingArea.contains(targetWorkingArea, ignoreCase = true)) {
+            return false
+        }
+        return true
     }
 
     /**
