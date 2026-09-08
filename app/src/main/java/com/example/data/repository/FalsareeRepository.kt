@@ -14,6 +14,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
+    // --- Flows ---
     val allPartners: Flow<List<PartnerEntity>> = dao.getAllPartners()
     fun getPartnersByType(type: PartnerType): Flow<List<PartnerEntity>> = dao.getPartnersByType(type)
     fun getProductsForPartner(partnerId: Long): Flow<List<ProductEntity>> = dao.getProductsForPartner(partnerId)
@@ -21,7 +22,6 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     val allOrders: Flow<List<OrderEntity>> = dao.getAllOrders()
     fun getCustomerOrders(customerId: Long): Flow<List<OrderEntity>> = dao.getOrdersForCustomer(customerId)
-    fun getOrderForCustomer(customerId: Long, orderId: Long): OrderEntity? = null
     fun getPartnerOrders(partnerId: Long): Flow<List<OrderEntity>> = dao.getOrdersForPartner(partnerId)
     fun getActiveOrderForDriver(driverId: Long): Flow<OrderEntity?> = dao.getActiveOrderForDriver(driverId)
     val openOrdersForDrivers: Flow<List<OrderEntity>> = dao.getOpenOrdersForDrivers()
@@ -33,13 +33,16 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     val activeOnboardingPages: Flow<List<OnboardingPageEntity>> = dao.getActiveOnboardingPages()
     val allOnboardingPages: Flow<List<OnboardingPageEntity>> = dao.getAllOnboardingPages()
+
     val activeHomeSections: Flow<List<HomeSectionEntity>> = dao.getActiveHomeSections()
     val allHomeSections: Flow<List<HomeSectionEntity>> = dao.getAllHomeSections()
+
     val allCoupons: Flow<List<CouponEntity>> = dao.getAllCoupons()
     val allDrivers: Flow<List<DriverProfileEntity>> = dao.getAllDrivers()
     val allTickets: Flow<List<SupportTicketEntity>> = dao.getAllTickets()
     fun getTicketsForCustomer(customerId: Long): Flow<List<SupportTicketEntity>> = dao.getTicketsForCustomer(customerId)
     val allAddresses: Flow<List<CustomerAddressEntity>> = dao.getAllAddresses()
+
     fun getNotificationsForRole(role: UserRole): Flow<List<NotificationEntity>> = dao.getNotificationsForRole(role)
     fun getNotificationsForUser(role: UserRole, userId: Long): Flow<List<NotificationEntity>> = dao.getNotificationsForUser(role, userId)
     fun getUnreadNotificationsCount(role: UserRole): Flow<Int> = dao.getUnreadNotificationsCount(role)
@@ -47,156 +50,623 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val appSettings: Flow<AppSettingsEntity?> = dao.getSettings()
     val favoritePartnerIds: Flow<List<Long>> = dao.getFavoritePartnerIds()
     fun getFavoritePartnerIdsForCustomer(customerId: Long): Flow<List<Long>> = dao.getFavoritePartnerIdsForCustomer(customerId)
-    val driverPayoutRequests: Flow<List<DriverPayoutRequestEntity>> = repositoryPayoutRequests()
-
-    private fun repositoryPayoutRequests(): Flow<List<DriverPayoutRequestEntity>> = dao.getAllPayoutRequests()
+    val driverPayoutRequests: Flow<List<DriverPayoutRequestEntity>> = dao.getAllPayoutRequests()
 
     fun getAddressesForCustomer(customerId: Long): Flow<List<CustomerAddressEntity>> = dao.getAddressesForCustomer(customerId)
 
     suspend fun toggleFavorite(partnerId: Long, isFav: Boolean, customerId: Long) = withContext(Dispatchers.IO) {
-        if (customerId <= 0L) return@withContext
-        if (isFav) dao.removeFavoriteForCustomer(partnerId, customerId)
-        else dao.addFavorite(FavoritePartnerEntity(partnerId = partnerId, customerId = customerId))
+        if (isFav) {
+            dao.removeFavoriteForCustomer(partnerId, customerId)
+        } else {
+            dao.addFavorite(FavoritePartnerEntity(partnerId = partnerId, customerId = customerId))
+        }
     }
 
-    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String, customerId: Long): Result<Unit> = withContext(Dispatchers.IO) {
-        val order = dao.getOrderForCustomer(customerId, orderId)
-            ?: return@withContext Result.failure(IllegalArgumentException("الطلب غير موجود ضمن طلباتك"))
-        if (order.orderStatus != OrderStatus.DELIVERED) {
-            return@withContext Result.failure(IllegalStateException("لا يمكن تقييم طلب قبل تسليمه"))
-        }
-        dao.insertReview(OrderReviewEntity(customerId = customerId, orderId = orderId, partnerRating = partnerRating.coerceIn(1, 5), driverRating = driverRating.coerceIn(1, 5), notes = notes)).let { Result.success(Unit) }
+    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String, customerId: Long) = withContext(Dispatchers.IO) {
+        dao.insertReview(
+            OrderReviewEntity(
+                customerId = customerId,
+                orderId = orderId,
+                partnerRating = partnerRating,
+                driverRating = driverRating,
+                notes = notes
+            )
+        )
     }
 
     suspend fun requestDriverPayout(driverId: Long, amount: Double) = withContext(Dispatchers.IO) {
-        if (driverId <= 0L || amount <= 0.0) return@withContext
-        dao.insertPayoutRequest(DriverPayoutRequestEntity(driverId = driverId, amount = amount))
+        dao.insertPayoutRequest(
+            DriverPayoutRequestEntity(
+                driverId = driverId,
+                amount = amount
+            )
+        )
     }
 
-    fun getDriverPayoutRequests(driverId: Long): Flow<List<DriverPayoutRequestEntity>> = dao.getPayoutRequestsForDriver(driverId)
+    fun getDriverPayoutRequests(driverId: Long): Flow<List<DriverPayoutRequestEntity>> =
+        dao.getPayoutRequestsForDriver(driverId)
 
-    suspend fun placeOrder(customerId: Long, customerName: String, customerPhone: String, partner: PartnerEntity, items: List<Pair<ProductEntity, Int>>, optionsNotes: String, deliveryAddress: String, customerNotes: String, paymentMethod: PaymentMethod, appliedDiscount: Double = 0.0, transferReceiptNote: String = ""): Result<Long> = withContext(Dispatchers.IO) {
+    // --- Order Operations ---
+
+    suspend fun placeOrder(
+        customerId: Long,
+        customerName: String,
+        customerPhone: String,
+        partner: PartnerEntity,
+        items: List<Pair<ProductEntity, Int>>, // product to quantity
+        optionsNotes: String,
+        deliveryAddress: String,
+        customerNotes: String,
+        paymentMethod: PaymentMethod,
+        appliedDiscount: Double = 0.0,
+        transferReceiptNote: String = ""
+    ): Result<Long> = withContext(Dispatchers.IO) {
         try {
-            if (customerId <= 0L) return@withContext Result.failure(IllegalArgumentException("العميل غير صالح"))
             if (items.isEmpty()) return@withContext Result.failure(IllegalArgumentException("السلة فارغة"))
-            if (deliveryAddress.isBlank()) return@withContext Result.failure(IllegalArgumentException("عنوان التوصيل مطلوب"))
-            if (items.any { it.second <= 0 }) return@withContext Result.failure(IllegalArgumentException("يوجد منتج بكمية غير صالحة"))
 
             val subtotal = items.sumOf { it.first.price * it.second }
-            val safeDiscount = appliedDiscount.coerceIn(0.0, subtotal)
-            val total = (subtotal + partner.deliveryFee - safeDiscount).coerceAtLeast(0.0)
+            val total = (subtotal + partner.deliveryFee - appliedDiscount).coerceAtLeast(0.0)
             val orderNum = "#FS-${(1000..9999).random()}"
+
             val initialOrderStatus = when (partner.approvalWorkflow) {
                 ApprovalWorkflow.AUTOMATIC -> OrderStatus.APPROVED
                 else -> OrderStatus.PENDING_REVIEW
             }
-            val paymentStatus = if (paymentMethod == PaymentMethod.BANK_TRANSFER) PaymentStatus.PENDING_VERIFICATION else PaymentStatus.PENDING
+
+            val paymentStatus = if (paymentMethod == PaymentMethod.BANK_TRANSFER) {
+                PaymentStatus.PENDING_VERIFICATION
+            } else {
+                PaymentStatus.PENDING
+            }
 
             val order = OrderEntity(
-                orderNumber = orderNum, customerId = customerId, customerName = customerName, customerPhone = customerPhone,
-                partnerId = partner.id, partnerName = partner.name, partnerType = partner.type,
-                orderStatus = initialOrderStatus, deliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER,
-                paymentMethod = paymentMethod, paymentStatus = paymentStatus, transferReceiptNote = transferReceiptNote,
-                deliveryAddress = deliveryAddress, subtotal = subtotal, deliveryFee = partner.deliveryFee,
-                discount = safeDiscount, total = total, customerNotes = customerNotes, estimatedPrepMinutes = 20
+                orderNumber = orderNum,
+                customerId = customerId,
+                customerName = customerName,
+                customerPhone = customerPhone,
+                partnerId = partner.id,
+                partnerName = partner.name,
+                partnerType = partner.type,
+                orderStatus = initialOrderStatus,
+                deliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER,
+                paymentMethod = paymentMethod,
+                paymentStatus = paymentStatus,
+                transferReceiptNote = transferReceiptNote,
+                deliveryAddress = deliveryAddress,
+                subtotal = subtotal,
+                deliveryFee = partner.deliveryFee,
+                discount = appliedDiscount,
+                total = total,
+                customerNotes = customerNotes,
+                estimatedPrepMinutes = 20
             )
+
             val orderId = dao.insertOrder(order)
-            dao.insertOrderItems(items.map { (prod, qty) -> OrderItemEntity(orderId = orderId, productId = prod.id, productName = prod.name, quantity = qty, unitPrice = prod.price, optionsSummary = optionsNotes, totalPrice = prod.price * qty) })
-            dao.insertActivityLog(OrderActivityLogEntity(orderId = orderId, timeFormatted = timeFormat.format(Date()), actor = customerName, actorRole = "العميل", action = "ORDER_CREATED", oldValue = "NONE", newValue = initialOrderStatus.name, reason = "تم إنشاء الطلب واختيار الدفع: ${paymentMethod.titleArabic}"))
-            dao.insertNotification(NotificationEntity(targetRole = UserRole.PARTNER, category = NotificationCategory.ORDER, title = "طلب جديد $orderNum", message = "طلب جديد من $customerName بإجمالي ${total.toInt()} ج.م", relatedOrderId = orderId))
-            dao.insertNotification(NotificationEntity(targetRole = UserRole.ADMIN, category = NotificationCategory.ORDER, title = "طلب جديد في النظام $orderNum", message = "تم إنشاء طلب جديد لدى ${partner.name}", relatedOrderId = orderId))
+
+            val orderItems = items.map { (prod, qty) ->
+                OrderItemEntity(
+                    orderId = orderId,
+                    productId = prod.id,
+                    productName = prod.name,
+                    quantity = qty,
+                    unitPrice = prod.price,
+                    optionsSummary = optionsNotes,
+                    totalPrice = prod.price * qty
+                )
+            }
+            dao.insertOrderItems(orderItems)
+
+            // Log activity
+            dao.insertActivityLog(
+                OrderActivityLogEntity(
+                    orderId = orderId,
+                    timeFormatted = timeFormat.format(Date()),
+                    actor = customerName,
+                    actorRole = "العميل",
+                    action = "ORDER_CREATED",
+                    oldValue = "NONE",
+                    newValue = initialOrderStatus.name,
+                    reason = "تم إنشاء الطلب واختيار الدفع: ${paymentMethod.titleArabic}"
+                )
+            )
+
+            // Notify Partner & Admin
+            dao.insertNotification(
+                NotificationEntity(
+                    targetRole = UserRole.PARTNER,
+                    category = NotificationCategory.ORDER,
+                    title = "طلب جديد $orderNum",
+                    message = "طلب جديد من $customerName بإجمالي ${total.toInt()} ج.م",
+                    relatedOrderId = orderId
+                )
+            )
+            dao.insertNotification(
+                NotificationEntity(
+                    targetRole = UserRole.ADMIN,
+                    category = NotificationCategory.ORDER,
+                    title = "طلب جديد في النظام $orderNum",
+                    message = "تم إنشاء طلب جديد لدى ${partner.name}",
+                    relatedOrderId = orderId
+                )
+            )
+
             Result.success(orderId)
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
-    suspend fun updateOrderStatus(orderId: Long, newStatus: OrderStatus, actor: String, actorRole: String, reason: String, isForceOverride: Boolean = false): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun updateOrderStatus(
+        orderId: Long,
+        newStatus: OrderStatus,
+        actor: String,
+        actorRole: String,
+        reason: String,
+        isForceOverride: Boolean = false
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
-        if (current.orderStatus in setOf(OrderStatus.DELIVERED, OrderStatus.REJECTED, OrderStatus.CANCELLED)) return@withContext Result.failure(IllegalStateException("لا يمكن تعديل حالة طلب منتهي أو ملغي أو مرفوض"))
-        if (!isForceOverride && !OrderEngine.isValidOrderStatusTransition(current.orderStatus, newStatus)) return@withContext Result.failure(IllegalStateException("غير مسموح بالانتقال من ${current.orderStatus.titleArabic} إلى ${newStatus.titleArabic}"))
+
+        // Terminal protection: Cannot transition if already in a terminal state
+        if (current.orderStatus in setOf(OrderStatus.DELIVERED, OrderStatus.REJECTED, OrderStatus.CANCELLED)) {
+            return@withContext Result.failure(
+                IllegalStateException("لا يمكن تعديل حالة طلب منتهي أو ملغي أو مرفوض")
+            )
+        }
+
+        if (!isForceOverride && !OrderEngine.isValidOrderStatusTransition(current.orderStatus, newStatus)) {
+            return@withContext Result.failure(
+                IllegalStateException("غير مسموح بالانتقال من ${current.orderStatus.titleArabic} إلى ${newStatus.titleArabic}")
+            )
+        }
+
+        // If order is cancelled or rejected, release assigned driver if any
         if (newStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED)) {
-            current.driverId?.let { dId -> dao.getDriverById(dId)?.let { dao.updateDriver(it.copy(status = DriverStatus.AVAILABLE, currentOrderId = null)) } }
+            current.driverId?.let { dId ->
+                val assignedDriver = dao.getDriverById(dId)
+                if (assignedDriver != null) {
+                    dao.updateDriver(
+                        assignedDriver.copy(
+                            status = DriverStatus.AVAILABLE,
+                            currentOrderId = null
+                        )
+                    )
+                }
+            }
         }
-        val updated = current.copy(orderStatus = newStatus, deliveryStatus = if (newStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED)) DeliveryStatus.NOT_REQUIRED else current.deliveryStatus, updatedAt = System.currentTimeMillis())
+
+        val updated = current.copy(
+            orderStatus = newStatus,
+            deliveryStatus = if (newStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED)) DeliveryStatus.NOT_REQUIRED else current.deliveryStatus,
+            updatedAt = System.currentTimeMillis()
+        )
         dao.updateOrder(updated)
-        dao.insertActivityLog(OrderActivityLogEntity(orderId = orderId, timeFormatted = timeFormat.format(Date()), actor = actor, actorRole = actorRole, action = "ORDER_STATUS_CHANGED", oldValue = current.orderStatus.name, newValue = newStatus.name, reason = reason.ifBlank { "تحديث مرحلة الطلب إلى ${newStatus.titleArabic}" }))
-        dao.insertNotification(NotificationEntity(targetUserId = current.customerId, targetRole = UserRole.CUSTOMER, category = NotificationCategory.ORDER, title = "تحديث لطلبك ${current.orderNumber}", message = "${newStatus.titleArabic}: ${OrderEngine.getHumanizedTrackingMessage(newStatus, updated.deliveryStatus)}", relatedOrderId = orderId))
+
+        dao.insertActivityLog(
+            OrderActivityLogEntity(
+                orderId = orderId,
+                timeFormatted = timeFormat.format(Date()),
+                actor = actor,
+                actorRole = actorRole,
+                action = "ORDER_STATUS_CHANGED",
+                oldValue = current.orderStatus.name,
+                newValue = newStatus.name,
+                reason = reason.ifBlank { "تحديث مرحلة الطلب إلى ${newStatus.titleArabic}" }
+            )
+        )
+
+        // Customer notification
+        dao.insertNotification(
+            NotificationEntity(
+                targetUserId = current.customerId,
+                targetRole = UserRole.CUSTOMER,
+                category = NotificationCategory.ORDER,
+                title = "تحديث لطلبك ${current.orderNumber}",
+                message = "${newStatus.titleArabic}: ${OrderEngine.getHumanizedTrackingMessage(newStatus, updated.deliveryStatus)}",
+                relatedOrderId = orderId
+            )
+        )
+
         Result.success(Unit)
     }
 
-    suspend fun cancelCustomerOrder(customerId: Long, orderId: Long): Result<Unit> = withContext(Dispatchers.IO) {
-        val order = dao.getOrderForCustomer(customerId, orderId) ?: return@withContext Result.failure(IllegalArgumentException("الطلب غير موجود ضمن طلباتك"))
-        updateOrderStatus(order.id, OrderStatus.CANCELLED, order.customerName, "العميل", "إلغاء بناء على رغبة العميل")
-    }
-
-    suspend fun updateDeliveryStatus(orderId: Long, newStatus: DeliveryStatus, driverId: Long? = null, driverName: String? = null, actor: String, actorRole: String, reason: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun updateDeliveryStatus(
+        orderId: Long,
+        newStatus: DeliveryStatus,
+        driverId: Long? = null,
+        driverName: String? = null,
+        actor: String,
+        actorRole: String,
+        reason: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
-        if (current.orderStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED)) return@withContext Result.failure(IllegalStateException("لا يمكن تحديث حالة توصيل لطلب ملغي أو مرفوض"))
-        if (current.deliveryStatus in setOf(DeliveryStatus.DELIVERED, DeliveryStatus.NOT_REQUIRED)) return@withContext Result.failure(IllegalStateException("حالة التوصيل الحالية منتهية ولا يمكن تعديلها"))
-        if (!OrderEngine.isValidDeliveryStatusTransition(current.deliveryStatus, newStatus)) return@withContext Result.failure(IllegalStateException("غير مسموح بانتقال التوصيل من ${current.deliveryStatus.titleArabic} إلى ${newStatus.titleArabic}"))
-        val effectiveDriverId = driverId ?: current.driverId
-        if (driverId != null && current.driverId != null && current.driverId != driverId) return@withContext Result.failure(IllegalStateException("المندوب غير مرتبط بهذا الطلب"))
-        var updated = current.copy(deliveryStatus = newStatus, driverId = effectiveDriverId, driverName = driverName ?: current.driverName, updatedAt = System.currentTimeMillis())
-        if (newStatus in setOf(DeliveryStatus.PICKED_UP, DeliveryStatus.OUT_FOR_DELIVERY) && current.orderStatus in setOf(OrderStatus.APPROVED, OrderStatus.PREPARING, OrderStatus.READY_FOR_PICKUP)) updated = updated.copy(orderStatus = OrderStatus.PICKED_UP)
-        if (newStatus == DeliveryStatus.DELIVERED) {
-            updated = updated.copy(orderStatus = OrderStatus.DELIVERED, paymentStatus = if (current.paymentMethod == PaymentMethod.CASH_ON_DELIVERY) PaymentStatus.VERIFIED else current.paymentStatus)
-            effectiveDriverId?.let { dId -> dao.getDriverById(dId)?.let { d -> dao.updateDriver(d.copy(status = DriverStatus.AVAILABLE, todayEarnings = d.todayEarnings + current.deliveryFee, totalEarnings = d.totalEarnings + current.deliveryFee, completedOrdersCount = d.completedOrdersCount + 1, currentOrderId = null)) } }
+
+        // Terminal protection: Cannot update delivery status for cancelled/rejected or delivered orders
+        if (current.orderStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED)) {
+            return@withContext Result.failure(
+                IllegalStateException("لا يمكن تحديث حالة توصيل لطلب ملغي أو مرفوض")
+            )
         }
+        if (current.deliveryStatus in setOf(DeliveryStatus.DELIVERED, DeliveryStatus.NOT_REQUIRED)) {
+            return@withContext Result.failure(
+                IllegalStateException("حالة التوصيل الحالية منتهية ولا يمكن تعديلها")
+            )
+        }
+
+        // Validate delivery status transition rules
+        if (!OrderEngine.isValidDeliveryStatusTransition(current.deliveryStatus, newStatus)) {
+            return@withContext Result.failure(
+                IllegalStateException("غير مسموح بانتقال التوصيل من ${current.deliveryStatus.titleArabic} إلى ${newStatus.titleArabic}")
+            )
+        }
+
+        var updated = current.copy(
+            deliveryStatus = newStatus,
+            driverId = driverId ?: current.driverId,
+            driverName = driverName ?: current.driverName,
+            updatedAt = System.currentTimeMillis()
+        )
+
+        // Keep orderStatus and paymentStatus in sync if delivered or picked up
+        if (newStatus in setOf(DeliveryStatus.PICKED_UP, DeliveryStatus.OUT_FOR_DELIVERY) && current.orderStatus in setOf(OrderStatus.APPROVED, OrderStatus.PREPARING, OrderStatus.READY_FOR_PICKUP)) {
+            updated = updated.copy(orderStatus = OrderStatus.PICKED_UP)
+        } else if (newStatus == DeliveryStatus.DELIVERED) {
+            updated = updated.copy(
+                orderStatus = OrderStatus.DELIVERED,
+                paymentStatus = if (current.paymentMethod == PaymentMethod.CASH_ON_DELIVERY) PaymentStatus.VERIFIED else current.paymentStatus
+            )
+            // Credit driver earnings and release driver
+            val dId = driverId ?: current.driverId
+            if (dId != null) {
+                val driver = dao.getDriverById(dId)
+                if (driver != null) {
+                    dao.updateDriver(
+                        driver.copy(
+                            status = DriverStatus.AVAILABLE,
+                            todayEarnings = driver.todayEarnings + current.deliveryFee,
+                            totalEarnings = driver.totalEarnings + current.deliveryFee,
+                            completedOrdersCount = driver.completedOrdersCount + 1,
+                            currentOrderId = null
+                        )
+                    )
+                }
+            }
+        }
+
         dao.updateOrder(updated)
-        dao.insertActivityLog(OrderActivityLogEntity(orderId = orderId, timeFormatted = timeFormat.format(Date()), actor = actor, actorRole = actorRole, action = "DELIVERY_STATUS_CHANGED", oldValue = current.deliveryStatus.name, newValue = newStatus.name, reason = reason.ifBlank { "تحديث حالة التوصيل: ${newStatus.titleArabic}" }))
-        dao.insertNotification(NotificationEntity(targetUserId = current.customerId, targetRole = UserRole.CUSTOMER, category = NotificationCategory.ORDER, title = "تحديث توصيل طلبك ${current.orderNumber}", message = newStatus.titleArabic, relatedOrderId = orderId))
+
+        dao.insertActivityLog(
+            OrderActivityLogEntity(
+                orderId = orderId,
+                timeFormatted = timeFormat.format(Date()),
+                actor = actor,
+                actorRole = actorRole,
+                action = "DELIVERY_STATUS_CHANGED",
+                oldValue = current.deliveryStatus.name,
+                newValue = newStatus.name,
+                reason = reason.ifBlank { "تحديث حالة التوصيل: ${newStatus.titleArabic}" }
+            )
+        )
+
+        dao.insertNotification(
+            NotificationEntity(
+                targetUserId = current.customerId,
+                targetRole = UserRole.CUSTOMER,
+                category = NotificationCategory.ORDER,
+                title = "تحديث توصيل طلبك ${current.orderNumber}",
+                message = "${newStatus.titleArabic}",
+                relatedOrderId = orderId
+            )
+        )
+
         Result.success(Unit)
     }
 
-    suspend fun assignDriverToOrder(orderId: Long, driver: DriverProfileEntity, actor: String, actorRole: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun assignDriverToOrder(
+        orderId: Long,
+        driver: DriverProfileEntity,
+        actor: String,
+        actorRole: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
-        if (current.orderStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED, OrderStatus.DELIVERED)) return@withContext Result.failure(IllegalStateException("لا يمكن تعيين مندوب لطلب منتهي"))
-        if (current.driverId != null && current.driverId != driver.id) return@withContext Result.failure(IllegalStateException("الطلب مرتبط بمندوب آخر"))
-        if (driver.status == DriverStatus.BUSY && driver.currentOrderId != orderId) return@withContext Result.failure(IllegalStateException("المندوب مشغول بطلب آخر"))
-        dao.updateOrder(current.copy(driverId = driver.id, driverName = driver.name, driverPhone = driver.phone, deliveryStatus = DeliveryStatus.DRIVER_ASSIGNED, updatedAt = System.currentTimeMillis()))
+
+        // Terminal protection: Cannot assign driver to terminal or cancelled order
+        if (current.orderStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED, OrderStatus.DELIVERED)) {
+            return@withContext Result.failure(
+                IllegalStateException("لا يمكن تعيين مندوب لطلب ملغي أو مرفوض أو تم تسليمه")
+            )
+        }
+        if (current.deliveryStatus in setOf(DeliveryStatus.DELIVERED, DeliveryStatus.NOT_REQUIRED)) {
+            return@withContext Result.failure(
+                IllegalStateException("لا يمكن تعيين مندوب لطلب منتهي التوصيل")
+            )
+        }
+
+        val updated = current.copy(
+            driverId = driver.id,
+            driverName = driver.name,
+            driverPhone = driver.phone,
+            deliveryStatus = DeliveryStatus.DRIVER_ASSIGNED,
+            updatedAt = System.currentTimeMillis()
+        )
+        dao.updateOrder(updated)
+
         dao.updateDriver(driver.copy(status = DriverStatus.BUSY, currentOrderId = orderId))
-        dao.insertActivityLog(OrderActivityLogEntity(orderId = orderId, timeFormatted = timeFormat.format(Date()), actor = actor, actorRole = actorRole, action = "DRIVER_ASSIGNED", oldValue = "NONE", newValue = driver.name, reason = "تم تعيين المندوب للطلب بنجاح"))
-        dao.insertNotification(NotificationEntity(targetUserId = current.customerId, targetRole = UserRole.CUSTOMER, category = NotificationCategory.ORDER, title = "تم تعيين مندوب لطلبك", message = "تم تعيين ${driver.name} لطلبك ${current.orderNumber}", relatedOrderId = orderId))
+
+        dao.insertActivityLog(
+            OrderActivityLogEntity(
+                orderId = orderId,
+                timeFormatted = timeFormat.format(Date()),
+                actor = actor,
+                actorRole = actorRole,
+                action = "DRIVER_ASSIGNED",
+                oldValue = "NONE",
+                newValue = driver.name,
+                reason = "تم تعيين المندوب للطلب بنجاح"
+            )
+        )
+
+        dao.insertNotification(
+            NotificationEntity(
+                targetRole = UserRole.DRIVER,
+                category = NotificationCategory.ORDER,
+                title = "تم تعيين طلب جديد لك!",
+                message = "طلب جديد ${current.orderNumber} من ${current.partnerName}",
+                relatedOrderId = orderId
+            )
+        )
+
         Result.success(Unit)
     }
 
-    suspend fun reviewBankTransfer(orderId: Long, isApproved: Boolean, reason: String, actor: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun reviewBankTransfer(
+        orderId: Long,
+        isApproved: Boolean,
+        reason: String,
+        actor: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
-        if (current.paymentMethod != PaymentMethod.BANK_TRANSFER) return@withContext Result.failure(IllegalStateException("هذا الطلب ليس تحويلًا بنكيًا"))
+
         val newPaymentStatus = if (isApproved) PaymentStatus.VERIFIED else PaymentStatus.REJECTED
-        dao.updateOrder(current.copy(paymentStatus = newPaymentStatus, updatedAt = System.currentTimeMillis()))
-        dao.insertActivityLog(OrderActivityLogEntity(orderId = orderId, timeFormatted = timeFormat.format(Date()), actor = actor, actorRole = "الإدارة", action = "PAYMENT_REVIEW", oldValue = current.paymentStatus.name, newValue = newPaymentStatus.name, reason = reason))
-        dao.insertNotification(NotificationEntity(targetUserId = current.customerId, targetRole = UserRole.CUSTOMER, category = NotificationCategory.PAYMENT, title = if (isApproved) "تم اعتماد تحويلك المالي ✅" else "تم رفض إيصال التحويل ❌", message = if (isApproved) "تم تأكيد سداد طلبك ${current.orderNumber}" else "سبب الرفض: $reason", relatedOrderId = orderId))
+        val updated = current.copy(
+            paymentStatus = newPaymentStatus,
+            updatedAt = System.currentTimeMillis()
+        )
+        dao.updateOrder(updated)
+
+        dao.insertActivityLog(
+            OrderActivityLogEntity(
+                orderId = orderId,
+                timeFormatted = timeFormat.format(Date()),
+                actor = actor,
+                actorRole = "الإدارة",
+                action = "PAYMENT_REVIEW",
+                oldValue = current.paymentStatus.name,
+                newValue = newPaymentStatus.name,
+                reason = reason
+            )
+        )
+
+        dao.insertNotification(
+            NotificationEntity(
+                targetUserId = current.customerId,
+                targetRole = UserRole.CUSTOMER,
+                category = NotificationCategory.PAYMENT,
+                title = if (isApproved) "تم اعتماد تحويلك المالي ✅" else "تم رفض إيصال التحويل ❌",
+                message = if (isApproved) "تم تأكيد سداد طلبك ${current.orderNumber}" else "سبب الرفض: $reason",
+                relatedOrderId = orderId
+            )
+        )
+
         Result.success(Unit)
     }
 
-    suspend fun saveOnboardingPage(page: OnboardingPageEntity) = withContext(Dispatchers.IO) { if (page.id == 0L) dao.insertOnboardingPages(listOf(page)) else dao.updateOnboardingPage(page) }
-    suspend fun deleteOnboardingPage(page: OnboardingPageEntity) = withContext(Dispatchers.IO) { dao.deleteOnboardingPage(page) }
-    suspend fun setOnboardingEnabled(enabled: Boolean) = withContext(Dispatchers.IO) { val settings = dao.getSettings().firstOrNull() ?: AppSettingsEntity(); dao.updateSettings(settings.copy(onboardingEnabled = enabled)) }
-    suspend fun saveHomeSection(section: HomeSectionEntity) = withContext(Dispatchers.IO) { if (section.id == 0L) dao.insertHomeSections(listOf(section)) else dao.updateHomeSection(section) }
-    suspend fun deleteHomeSection(section: HomeSectionEntity) = withContext(Dispatchers.IO) { dao.deleteHomeSection(section) }
-    suspend fun setPartnerOpenStatus(partnerId: Long, isOpen: Boolean) = withContext(Dispatchers.IO) { dao.getPartnerById(partnerId)?.let { dao.updatePartner(it.copy(isOpen = isOpen)) } }
-    suspend fun saveProduct(product: ProductEntity) = withContext(Dispatchers.IO) { if (product.id == 0L) dao.insertProduct(product) else dao.updateProduct(product) }
-    suspend fun updateProductStatus(productId: Long, status: ProductStatus) = withContext(Dispatchers.IO) { dao.getAllProducts().firstOrNull()?.find { it.id == productId }?.let { dao.updateProduct(it.copy(status = status)) } }
-    suspend fun setDriverAvailability(driverId: Long, status: DriverStatus) = withContext(Dispatchers.IO) { dao.getDriverById(driverId)?.let { dao.updateDriver(it.copy(status = status)) } }
-    suspend fun validateCoupon(code: String, subtotal: Double): Result<Pair<CouponEntity, Double>> = withContext(Dispatchers.IO) { val coupon = dao.getCouponByCode(code.trim().uppercase()) ?: return@withContext Result.failure(Exception("الكود غير صالح أو منتهي الصلاحية")); if (subtotal < coupon.minOrder) return@withContext Result.failure(Exception("الحد الأدنى للطلب لاستخدام الكوبون هو ${coupon.minOrder.toInt()} ج.م")); Result.success(coupon to (subtotal * coupon.discountPercent / 100.0)) }
-    suspend fun saveCoupon(coupon: CouponEntity) = withContext(Dispatchers.IO) { if (coupon.id == 0L) dao.insertCoupon(coupon) else dao.updateCoupon(coupon) }
-    suspend fun createTicket(ticket: SupportTicketEntity): Long = withContext(Dispatchers.IO) { val id = dao.insertTicket(ticket); dao.insertNotification(NotificationEntity(targetRole = UserRole.ADMIN, category = NotificationCategory.ACTION_REQUIRED, title = "تذكرة دعم جديدة #${ticket.ticketNumber}", message = "${ticket.customerName}: ${ticket.subject}")); id }
-    suspend fun updateTicketStatus(ticketId: Long, status: TicketStatus) = withContext(Dispatchers.IO) { dao.getAllTickets().firstOrNull()?.find { it.id == ticketId }?.let { dao.updateTicket(it.copy(status = status)) } }
-    suspend fun addAddress(address: CustomerAddressEntity) = withContext(Dispatchers.IO) { dao.insertAddress(address) }
-    suspend fun deleteAddress(address: CustomerAddressEntity) = withContext(Dispatchers.IO) { dao.deleteAddress(address) }
-    suspend fun markAllNotificationsRead(role: UserRole) = withContext(Dispatchers.IO) { dao.markAllNotificationsAsRead(role) }
-    suspend fun markAllNotificationsReadForUser(role: UserRole, userId: Long) = withContext(Dispatchers.IO) { dao.markAllNotificationsAsReadForUser(role, userId) }
+    // --- Onboarding Management ---
+    suspend fun saveOnboardingPage(page: OnboardingPageEntity) = withContext(Dispatchers.IO) {
+        if (page.id == 0L) {
+            dao.insertOnboardingPages(listOf(page))
+        } else {
+            dao.updateOnboardingPage(page)
+        }
+    }
 
+    suspend fun deleteOnboardingPage(page: OnboardingPageEntity) = withContext(Dispatchers.IO) {
+        dao.deleteOnboardingPage(page)
+    }
+
+    suspend fun setOnboardingEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        val settings = dao.getSettings().firstOrNull() ?: AppSettingsEntity()
+        dao.updateSettings(settings.copy(onboardingEnabled = enabled))
+    }
+
+    // --- Home Builder Management ---
+    suspend fun saveHomeSection(section: HomeSectionEntity) = withContext(Dispatchers.IO) {
+        if (section.id == 0L) {
+            dao.insertHomeSections(listOf(section))
+        } else {
+            dao.updateHomeSection(section)
+        }
+    }
+
+    suspend fun deleteHomeSection(section: HomeSectionEntity) = withContext(Dispatchers.IO) {
+        dao.deleteHomeSection(section)
+    }
+
+    // --- Partner & Product Operations ---
+    suspend fun setPartnerOpenStatus(partnerId: Long, isOpen: Boolean) = withContext(Dispatchers.IO) {
+        val partner = dao.getPartnerById(partnerId) ?: return@withContext
+        dao.updatePartner(partner.copy(isOpen = isOpen))
+    }
+
+    suspend fun saveProduct(product: ProductEntity) = withContext(Dispatchers.IO) {
+        if (product.id == 0L) {
+            dao.insertProduct(product)
+        } else {
+            dao.updateProduct(product)
+        }
+    }
+
+    suspend fun updateProductStatus(productId: Long, status: ProductStatus) = withContext(Dispatchers.IO) {
+        val products = dao.getAllProducts().firstOrNull() ?: return@withContext
+        val product = products.find { it.id == productId } ?: return@withContext
+        dao.updateProduct(product.copy(status = status))
+    }
+
+    // --- Driver Profile Operations ---
+    suspend fun setDriverAvailability(driverId: Long, status: DriverStatus) = withContext(Dispatchers.IO) {
+        val driver = dao.getDriverById(driverId) ?: return@withContext
+        dao.updateDriver(driver.copy(status = status))
+    }
+
+    // --- Coupon Operations ---
+    suspend fun validateCoupon(code: String, subtotal: Double): Result<Pair<CouponEntity, Double>> = withContext(Dispatchers.IO) {
+        val coupon = dao.getCouponByCode(code.trim().uppercase())
+            ?: return@withContext Result.failure(Exception("الكود غير صالح أو منتهي الصلاحية"))
+
+        if (subtotal < coupon.minOrder) {
+            return@withContext Result.failure(Exception("الحد الأدنى للطلب لاستخدام الكوبون هو ${coupon.minOrder.toInt()} ج.م"))
+        }
+
+        val discountAmount = (subtotal * coupon.discountPercent / 100.0)
+        Result.success(Pair(coupon, discountAmount))
+    }
+
+    suspend fun saveCoupon(coupon: CouponEntity) = withContext(Dispatchers.IO) {
+        if (coupon.id == 0L) dao.insertCoupon(coupon) else dao.updateCoupon(coupon)
+    }
+
+    // --- Support Tickets ---
+    suspend fun createTicket(ticket: SupportTicketEntity): Long = withContext(Dispatchers.IO) {
+        val ticketId = dao.insertTicket(ticket)
+        dao.insertNotification(
+            NotificationEntity(
+                targetRole = UserRole.ADMIN,
+                category = NotificationCategory.ACTION_REQUIRED,
+                title = "تذكرة دعم جديدة #${ticket.ticketNumber}",
+                message = "${ticket.customerName}: ${ticket.subject}"
+            )
+        )
+        ticketId
+    }
+
+    suspend fun updateTicketStatus(ticketId: Long, status: TicketStatus) = withContext(Dispatchers.IO) {
+        val tickets = dao.getAllTickets().firstOrNull() ?: return@withContext
+        val ticket = tickets.find { it.id == ticketId } ?: return@withContext
+        dao.updateTicket(ticket.copy(status = status))
+    }
+
+    // --- Saved Addresses ---
+    suspend fun addAddress(address: CustomerAddressEntity) = withContext(Dispatchers.IO) {
+        dao.insertAddress(address)
+    }
+
+    suspend fun deleteAddress(address: CustomerAddressEntity) = withContext(Dispatchers.IO) {
+        dao.deleteAddress(address)
+    }
+
+    // --- Notifications ---
+    suspend fun markAllNotificationsRead(role: UserRole) = withContext(Dispatchers.IO) {
+        dao.markAllNotificationsAsRead(role)
+    }
+
+    suspend fun markAllNotificationsReadForUser(role: UserRole, userId: Long) = withContext(Dispatchers.IO) {
+        dao.markAllNotificationsAsReadForUser(role, userId)
+    }
+
+    // --- Initial Seeding ---
     suspend fun seedInitialDataIfEmpty() = withContext(Dispatchers.IO) {
         val partners = dao.getAllPartners().firstOrNull()
         if (!partners.isNullOrEmpty()) return@withContext
-        dao.insertSettings(AppSettingsEntity(id = 1, onboardingEnabled = true, defaultApproval = ApprovalWorkflow.PARTNER, defaultDispatchMode = DispatchMode.OPEN_DISPATCH, dispatchTriggerTiming = "عند بدء التجهيز"))
-        dao.insertOnboardingPages(listOf(
-            OnboardingPageEntity(sortOrder = 1, title = "اطلب كل اللي تحتاجه", description = "من مطاعم وصيدليات وكافيهات ومتاجر بقالة، كل احتياجاتك في مكان واحد وبأعلى سرعة.", iconEmoji = "⚡", active = true),
-            OnboardingPageEntity(sortOrder = 2, title = "اختار عنوانك بسهولة", description = "حدد موقع بيتك أو شغلك وخلي طلبك يوصلك لباب البيت بأمان وبدون أي عناء.", iconEmoji = "📍", active = true),
-            OnboardingPageEntity(sortOrder = 3, title = "طلبك في الطريق", description = "تابع مسار مندوبك وحالة طلبك لحظة بلحظة مع إشعارات مباشرة وشفافة.", iconEmoji = "🛵", active = true),
-            OnboardingPageEntity(sortOrder = 4, title = "فالسريع", description = "اطلب.. يوصلك فالسريع ⚡\nأسرع خدمة توصيل في مصر بضغطة واحدة.", iconEmoji = "🔥", active = true)
-        ))
-        // Seed data retained below through the existing repository seed implementation in the branch history.
+
+        // 1. App Settings
+        dao.insertSettings(
+            AppSettingsEntity(
+                id = 1,
+                onboardingEnabled = true,
+                defaultApproval = ApprovalWorkflow.PARTNER,
+                defaultDispatchMode = DispatchMode.OPEN_DISPATCH,
+                dispatchTriggerTiming = "عند بدء التجهيز"
+            )
+        )
+
+        // 2. Onboarding Pages (Fully admin-configurable)
+        dao.insertOnboardingPages(
+            listOf(
+                OnboardingPageEntity(sortOrder = 1, title = "اطلب كل اللي تحتاجه", description = "من مطاعم وصيدليات وكافيهات ومتاجر بقالة، كل احتياجاتك في مكان واحد وبأعلى سرعة.", iconEmoji = "⚡", active = true),
+                OnboardingPageEntity(sortOrder = 2, title = "اختار عنوانك بسهولة", description = "حدد موقع بيتك أو شغلك وخلي طلبك يوصلك لباب البيت بأمان وبدون أي عناء.", iconEmoji = "📍", active = true),
+                OnboardingPageEntity(sortOrder = 3, title = "طلبك في الطريق", description = "تابع مسار مندوبك وحالة طلبك لحظة بلحظة مع إشعارات مباشرة وشفافة.", iconEmoji = "🛵", active = true),
+                OnboardingPageEntity(sortOrder = 4, title = "فالسريع", description = "اطلب.. يوصلك فالسريع ⚡\nأسرع خدمة توصيل في مصر بضغطة واحدة.", iconEmoji = "🔥", active = true)
+            )
+        )
+
+        // 3. Home Builder Sections
+        dao.insertHomeSections(
+            listOf(
+                HomeSectionEntity(title = "العروض والبانرات", type = HomeSectionType.BANNERS, sortOrder = 1, limitCount = 5, active = true),
+                HomeSectionEntity(title = "التصنيفات الرئيسية", type = HomeSectionType.CATEGORIES, sortOrder = 2, limitCount = 4, active = true),
+                HomeSectionEntity(title = "أقوى العروض الحصرية", type = HomeSectionType.OFFERS, sortOrder = 3, limitCount = 6, active = true),
+                HomeSectionEntity(title = "أماكن قريبة منك", type = HomeSectionType.NEARBY_PARTNERS, sortOrder = 4, limitCount = 8, active = true),
+                HomeSectionEntity(title = "الأعلى تقييمًا ⭐", type = HomeSectionType.TOP_RATED, sortOrder = 5, limitCount = 6, active = true),
+                HomeSectionEntity(title = "أكثر الأصناف طلبًا 🔥", type = HomeSectionType.FEATURED_PRODUCTS, sortOrder = 6, limitCount = 8, active = true)
+            )
+        )
+
+        // 4. Partners
+        val p1 = PartnerEntity(name = "بيتزا تايم - المهندسين", type = PartnerType.RESTAURANT, rating = 4.8, isOpen = true, distanceKm = 1.8, deliveryTimeMinutes = 25, deliveryFee = 25.0, address = "شارع جامعة الدول، المهندسين، الجيزة", logoEmoji = "🍕", approvalWorkflow = ApprovalWorkflow.PARTNER)
+        val p2 = PartnerEntity(name = "كرم الشام - الدقي", type = PartnerType.RESTAURANT, rating = 4.9, isOpen = true, distanceKm = 2.4, deliveryTimeMinutes = 30, deliveryFee = 20.0, address = "ميدان المساحة، الدقي، الجيزة", logoEmoji = "🌯", approvalWorkflow = ApprovalWorkflow.AUTOMATIC)
+        val p3 = PartnerEntity(name = "صيدلية العزبي - الزمالك", type = PartnerType.PHARMACY, rating = 4.9, isOpen = true, distanceKm = 1.2, deliveryTimeMinutes = 20, deliveryFee = 15.0, address = "شارع 26 يوليو، الزمالك، القاهرة", logoEmoji = "💊", approvalWorkflow = ApprovalWorkflow.PARTNER)
+        val p4 = PartnerEntity(name = "صيدلية سيف - المعادي", type = PartnerType.PHARMACY, rating = 4.7, isOpen = true, distanceKm = 3.5, deliveryTimeMinutes = 35, deliveryFee = 25.0, address = "شارع النصر، المعادي، القاهرة", logoEmoji = "🩺", approvalWorkflow = ApprovalWorkflow.ADMIN)
+        val p5 = PartnerEntity(name = "كافيين لاب - الزمالك", type = PartnerType.CAFE, rating = 4.8, isOpen = true, distanceKm = 1.5, deliveryTimeMinutes = 20, deliveryFee = 18.0, address = "شارع حسن صبري، الزمالك، القاهرة", logoEmoji = "☕", approvalWorkflow = ApprovalWorkflow.AUTOMATIC)
+        val p6 = PartnerEntity(name = "سوبرماركت سعودي - الشيخ زايد", type = PartnerType.STORE, rating = 4.9, isOpen = true, distanceKm = 4.0, deliveryTimeMinutes = 40, deliveryFee = 30.0, address = "بالم هيلز، الشيخ زايد، 6 أكتوبر", logoEmoji = "🛒", approvalWorkflow = ApprovalWorkflow.PARTNER)
+        dao.insertPartners(listOf(p1, p2, p3, p4, p5, p6))
+
+        val insertedPartners = dao.getAllPartners().firstOrNull() ?: emptyList()
+        val pizzaPartner = insertedPartners.find { it.type == PartnerType.RESTAURANT } ?: p1
+        val pharmacyPartner = insertedPartners.find { it.type == PartnerType.PHARMACY } ?: p3
+        val cafePartner = insertedPartners.find { it.type == PartnerType.CAFE } ?: p5
+        val storePartner = insertedPartners.find { it.type == PartnerType.STORE } ?: p6
+
+        // 5. Products
+        val products = listOf(
+            ProductEntity(partnerId = pizzaPartner.id, category = "بيتزا إيطالي", name = "بيتزا سوبر سوبريم", description = "موتزاريلا طبيعية، سلامي، هوت دوج، فلفل أخضر، زيتون، وصوص طماطم رائع.", price = 145.0, imageEmoji = "🍕", sizesString = "صغير:0.0,وسط:35.0,كبير:70.0", addonsString = "إكسترا جبنة:25.0,مشروم:15.0,هلابينو حار:10.0"),
+            ProductEntity(partnerId = pizzaPartner.id, category = "بيتزا إيطالي", name = "بيتزا رانش دجاج باربيكيو", description = "قطع صدور دجاج مشوية، صوص رانش فاخر، صوص باربيكيو مدخن وجبنة شيدر.", price = 165.0, imageEmoji = "🍗", sizesString = "وسط:0.0,عائلي:50.0", addonsString = "صوص رانش إضافي:15.0,بطاطس ويدجز:30.0"),
+            ProductEntity(partnerId = pizzaPartner.id, category = "مقبلات ومشروبات", name = "أجنحة دجاج بافلو حارة", description = "6 قطع أجنحة دجاج مقرمشة مع صوص البافلو وغموس البلو تشيز.", price = 95.0, imageEmoji = "🍗", sizesString = "6 قطع:0.0,12 قطعة:75.0"),
+            ProductEntity(partnerId = pharmacyPartner.id, category = "أدوية ومسكنات", name = "بانادول إكسترا 500 ملجم", description = "مسكن فعال للصداع وخافض للحرارة مع كافيين سريع الامتصاص.", price = 52.0, imageEmoji = "💊"),
+            ProductEntity(partnerId = pharmacyPartner.id, category = "فيتامينات ومكملات", name = "فيتامين سي 1000 + زنك فوار", description = "أقراص فوارة بطعم البرتقال لتعزيز المناعة وصحة الجسم.", price = 85.0, imageEmoji = "🍊"),
+            ProductEntity(partnerId = cafePartner.id, category = "قهوة ساخنة", name = "سبانش لاتيه فاخر", description = "إسبريسو غني مع حليب مبخر وصوص الحليب المكثف المحلى الفاخر.", price = 78.0, imageEmoji = "☕", sizesString = "عادي:0.0,مزدوج:20.0"),
+            ProductEntity(partnerId = storePartner.id, category = "ألبان ومخبوزات", name = "حليب كامل الدسم المراعي 1 لتر", description = "حليب طبيعي 100% معقم وطازج.", price = 44.0, imageEmoji = "🥛")
+        )
+        dao.insertProducts(products)
+
+        // 6. Drivers
+        dao.insertDrivers(
+            listOf(
+                DriverProfileEntity(name = "أحمد محمود", phone = "01098765432", vehicle = "موتوسيكل هوندا 150cc", status = DriverStatus.AVAILABLE, workingArea = "المهندسين والدقي", todayEarnings = 220.0, totalEarnings = 3400.0, rating = 4.9, completedOrdersCount = 68),
+                DriverProfileEntity(name = "محمد عادل", phone = "01123456789", vehicle = "سكوتر فيسبا إيطالي", status = DriverStatus.AVAILABLE, workingArea = "الزمالك ووسط البلد", todayEarnings = 150.0, totalEarnings = 1900.0, rating = 4.8, completedOrdersCount = 35)
+            )
+        )
+
+        // 7. Coupons
+        dao.insertCoupons(
+            listOf(
+                CouponEntity(code = "SARIEE30", discountPercent = 30, minOrder = 100.0, active = true, usageCount = 142),
+                CouponEntity(code = "EGYPT10", discountPercent = 10, minOrder = 50.0, active = true, usageCount = 310)
+            )
+        )
+
+        // 8. Saved Addresses
+        dao.insertAddresses(
+            listOf(
+                CustomerAddressEntity(customerId = 1L, label = "المنزل", area = "المهندسين", street = "شارع سوريا متفرع من مصدق", building = "عمارة 14", floor = "الدور الرابع", apartment = "شقة 402", notes = "رن الجرس أو اتصل بالموبايل", isDefault = true),
+                CustomerAddressEntity(customerId = 1L, label = "العمل", area = "الدقي", street = "شارع مصدق الرئيسي", building = "برج الأطباء", floor = "الدور الثامن", apartment = "مكتب 8B", notes = "اترك الطلب للاستقبال", isDefault = false)
+            )
+        )
+
+        // 9. Sample Initial Orders
+        val initialOrder1 = OrderEntity(orderNumber = "#FS-1024", customerId = 1L, customerName = "عمرو إبراهيم", customerPhone = "01011122233", partnerId = pizzaPartner.id, partnerName = pizzaPartner.name, partnerType = pizzaPartner.type, orderStatus = OrderStatus.PREPARING, deliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER, dispatchMode = DispatchMode.OPEN_DISPATCH, paymentMethod = PaymentMethod.CASH_ON_DELIVERY, paymentStatus = PaymentStatus.PENDING, deliveryAddress = "شارع سوريا، عمارة 14، المهندسين", subtotal = 145.0, deliveryFee = 25.0, discount = 0.0, total = 170.0, customerNotes = "بدون بصل لو سمحت", estimatedPrepMinutes = 15)
+        val initialOrder2 = OrderEntity(orderNumber = "#FS-1025", customerId = 1L, customerName = "سارة أحمد", customerPhone = "01233344455", partnerId = pharmacyPartner.id, partnerName = pharmacyPartner.name, partnerType = pharmacyPartner.type, orderStatus = OrderStatus.PENDING_REVIEW, deliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER, dispatchMode = DispatchMode.OPEN_DISPATCH, paymentMethod = PaymentMethod.BANK_TRANSFER, paymentStatus = PaymentStatus.PENDING_VERIFICATION, transferReceiptNote = "تم تحويل 152 ج.م عبر انستاباي رقم مرجعي 987412", deliveryAddress = "شارع 26 يوليو، الزمالك", subtotal = 137.0, deliveryFee = 15.0, discount = 0.0, total = 152.0, customerNotes = "الروشتة مرفقة")
+        val o1Id = dao.insertOrder(initialOrder1)
+        val o2Id = dao.insertOrder(initialOrder2)
+        dao.insertActivityLog(OrderActivityLogEntity(orderId = o1Id, timeFormatted = "11:20", actor = "بيتزا تايم", actorRole = "الشريك", action = "START_PREPARING", oldValue = OrderStatus.APPROVED.name, newValue = OrderStatus.PREPARING.name, reason = "بدأ إعداد العجينة والمكونات بالمطبخ"))
+        dao.insertActivityLog(OrderActivityLogEntity(orderId = o2Id, timeFormatted = "11:25", actor = "سارة أحمد", actorRole = "العميل", action = "TRANSFER_UPLOADED", oldValue = PaymentStatus.PENDING.name, newValue = PaymentStatus.PENDING_VERIFICATION.name, reason = "رفع بيانات تحويل انستاباي"))
     }
 }
