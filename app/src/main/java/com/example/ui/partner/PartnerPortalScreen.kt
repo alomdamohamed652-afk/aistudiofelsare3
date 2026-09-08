@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.designsystem.*
+import com.example.BuildConfig
 import com.example.core.model.OrderStatus
 import com.example.core.model.ProductStatus
 import com.example.core.model.UserRole
@@ -113,28 +114,32 @@ fun PartnerPortalScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Partner Switcher (To easily test Restaurant vs Pharmacy vs Cafe vs Store)
+                // Partner switching is a development-only QA tool.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("تبديل الشريك:", color = TextMuted, style = MaterialTheme.typography.labelSmall)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        allPartners.take(4).forEach { p ->
-                            val isChosen = activePartner?.id == p.id
-                            Text(
-                                text = p.logoEmoji,
-                                fontSize = 20.sp,
-                                modifier = Modifier
-                                    .padding(horizontal = 4.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isChosen) BrandPrimary else Color.Transparent)
-                                    .clickable { onSelectPartner(p.id) }
-                                    .padding(4.dp)
-                            )
+                    if (BuildConfig.DEBUG) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("تبديل الشريك:", color = TextMuted, style = MaterialTheme.typography.labelSmall)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            allPartners.take(4).forEach { p ->
+                                val isChosen = activePartner?.id == p.id
+                                Text(
+                                    text = p.logoEmoji,
+                                    fontSize = 20.sp,
+                                    modifier = Modifier
+                                        .padding(horizontal = 4.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isChosen) BrandPrimary else Color.Transparent)
+                                        .clickable { onSelectPartner(p.id) }
+                                        .padding(4.dp)
+                                )
+                            }
                         }
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
                     }
 
                     // Store open/close switch
