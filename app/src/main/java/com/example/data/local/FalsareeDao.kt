@@ -53,7 +53,7 @@ interface FalsareeDao {
     @Query("SELECT * FROM orders WHERE partnerId = :partnerId ORDER BY createdAt DESC")
     fun getOrdersForPartner(partnerId: Long): Flow<List<OrderEntity>>
 
-    @Query("SELECT * FROM orders WHERE driverId = :driverId AND deliveryStatus != 'DELIVERED' ORDER BY createdAt DESC LIMIT 1")
+    @Query("SELECT * FROM orders WHERE driverId = :driverId AND deliveryStatus NOT IN ('DELIVERED', 'NOT_REQUIRED') AND orderStatus NOT IN ('CANCELLED', 'REJECTED') ORDER BY createdAt DESC LIMIT 1")
     fun getActiveOrderForDriver(driverId: Long): Flow<OrderEntity?>
 
     @Query("SELECT * FROM orders WHERE driverId IS NULL AND deliveryStatus = 'WAITING_FOR_DRIVER' AND orderStatus NOT IN ('CANCELLED', 'REJECTED') ORDER BY createdAt ASC")

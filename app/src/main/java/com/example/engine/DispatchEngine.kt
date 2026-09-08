@@ -3,6 +3,7 @@ package com.example.engine
 import com.example.core.model.DeliveryStatus
 import com.example.core.model.DispatchMode
 import com.example.core.model.DriverStatus
+import com.example.core.model.OrderStatus
 import com.example.data.local.DriverProfileEntity
 import com.example.data.local.OrderEntity
 
@@ -40,12 +41,26 @@ object DispatchEngine {
         order: OrderEntity,
         timingSetting: String
     ): Boolean {
+        // Never dispatch cancelled, rejected, or completed orders, or orders not waiting for driver
         if (order.deliveryStatus != DeliveryStatus.WAITING_FOR_DRIVER) return false
+        if (order.orderStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED, OrderStatus.DELIVERED)) return false
 
         return when (timingSetting) {
-            "فوري عند الاعتماد" -> order.orderStatus.ordinal >= com.example.core.model.OrderStatus.APPROVED.ordinal
-            "عند بدء التجهيز" -> order.orderStatus.ordinal >= com.example.core.model.OrderStatus.PREPARING.ordinal
-            "عند جاهزية الطلب" -> order.orderStatus.ordinal >= com.example.core.model.OrderStatus.READY_FOR_PICKUP.ordinal
+            "فوري عند الاعتماد" -> order.orderStatus in setOf(
+                OrderStatus.APPROVED,
+                OrderStatus.PREPARING,
+                OrderStatus.READY_FOR_PICKUP,
+                OrderStatus.PICKED_UP
+            )
+            "عند بدء التجهيز" -> order.orderStatus in setOf(
+                OrderStatus.PREPARING,
+                OrderStatus.READY_FOR_PICKUP,
+                OrderStatus.PICKED_UP
+            )
+            "عند جاهزية الطلب" -> order.orderStatus in setOf(
+                OrderStatus.READY_FOR_PICKUP,
+                OrderStatus.PICKED_UP
+            )
             else -> true
         }
     }

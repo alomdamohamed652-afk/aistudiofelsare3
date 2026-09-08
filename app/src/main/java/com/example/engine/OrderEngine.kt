@@ -46,13 +46,30 @@ object OrderEngine {
     fun isValidDeliveryStatusTransition(from: DeliveryStatus, to: DeliveryStatus): Boolean {
         if (from == to) return true
         return when (from) {
-            DeliveryStatus.NOT_REQUIRED -> false
-            DeliveryStatus.WAITING_FOR_DRIVER -> to == DeliveryStatus.DRIVER_ASSIGNED
-            DeliveryStatus.DRIVER_ASSIGNED -> to == DeliveryStatus.DRIVER_TO_PICKUP
-            DeliveryStatus.DRIVER_TO_PICKUP -> to == DeliveryStatus.PICKED_UP
-            DeliveryStatus.PICKED_UP -> to == DeliveryStatus.OUT_FOR_DELIVERY
+            DeliveryStatus.NOT_REQUIRED -> false // Terminal
+            DeliveryStatus.WAITING_FOR_DRIVER -> to in listOf(
+                DeliveryStatus.DRIVER_ASSIGNED,
+                DeliveryStatus.NOT_REQUIRED
+            )
+            DeliveryStatus.DRIVER_ASSIGNED -> to in listOf(
+                DeliveryStatus.DRIVER_TO_PICKUP,
+                DeliveryStatus.PICKED_UP,
+                DeliveryStatus.OUT_FOR_DELIVERY,
+                DeliveryStatus.WAITING_FOR_DRIVER,
+                DeliveryStatus.NOT_REQUIRED
+            )
+            DeliveryStatus.DRIVER_TO_PICKUP -> to in listOf(
+                DeliveryStatus.PICKED_UP,
+                DeliveryStatus.OUT_FOR_DELIVERY,
+                DeliveryStatus.WAITING_FOR_DRIVER,
+                DeliveryStatus.NOT_REQUIRED
+            )
+            DeliveryStatus.PICKED_UP -> to in listOf(
+                DeliveryStatus.OUT_FOR_DELIVERY,
+                DeliveryStatus.DELIVERED
+            )
             DeliveryStatus.OUT_FOR_DELIVERY -> to == DeliveryStatus.DELIVERED
-            DeliveryStatus.DELIVERED -> false
+            DeliveryStatus.DELIVERED -> false // Terminal
         }
     }
 

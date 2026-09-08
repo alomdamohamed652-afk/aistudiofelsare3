@@ -199,14 +199,37 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
 
+        // Terminal protection: Cannot transition if already in a terminal state
+        if (current.orderStatus in setOf(OrderStatus.DELIVERED, OrderStatus.REJECTED, OrderStatus.CANCELLED)) {
+            return@withContext Result.failure(
+                IllegalStateException("لا يمكن تعديل حالة طلب منتهي أو ملغي أو مرفوض")
+            )
+        }
+
         if (!isForceOverride && !OrderEngine.isValidOrderStatusTransition(current.orderStatus, newStatus)) {
             return@withContext Result.failure(
                 IllegalStateException("غير مسموح بالانتقال من ${current.orderStatus.titleArabic} إلى ${newStatus.titleArabic}")
             )
         }
 
+        // If order is cancelled or rejected, release assigned driver if any
+        if (newStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED)) {
+            current.driverId?.let { dId ->
+                val assignedDriver = dao.getDriverById(dId)
+                if (assignedDriver != null) {
+                    dao.updateDriver(
+                        assignedDriver.copy(
+                            status = DriverStatus.AVAILABLE,
+                            currentOrderId = null
+                        )
+                    )
+                }
+            }
+        }
+
         val updated = current.copy(
             orderStatus = newStatus,
+            deliveryStatus = if (newStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED)) DeliveryStatus.NOT_REQUIRED else current.deliveryStatus,
             updatedAt = System.currentTimeMillis()
         )
         dao.updateOrder(updated)
@@ -230,7 +253,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 targetRole = UserRole.CUSTOMER,
                 category = NotificationCategory.ORDER,
                 title = "تحديث لطلبك ${current.orderNumber}",
-                message = "${newStatus.titleArabic}: ${OrderEngine.getHumanizedTrackingMessage(newStatus, current.deliveryStatus)}",
+                message = "${newStatus.titleArabic}: ${OrderEngine.getHumanizedTrackingMessage(newStatus, updated.deliveryStatus)}",
                 relatedOrderId = orderId
             )
         )
@@ -249,6 +272,25 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
 
+        // Terminal protection: Cannot update delivery status for cancelled/rejected or delivered orders
+        if (current.orderStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED)) {
+            return@withContext Result.failure(
+                IllegalStateException("لا يمكن تحديث حالة توصيل لطلب ملغي أو مرفوض")
+            )
+        }
+        if (current.deliveryStatus in setOf(DeliveryStatus.DELIVERED, DeliveryStatus.NOT_REQUIRED)) {
+            return@withContext Result.failure(
+                IllegalStateException("حالة التوصيل الحالية منتهية ولا يمكن تعديلها")
+            )
+        }
+
+        // Validate delivery status transition rules
+        if (!OrderEngine.isValidDeliveryStatusTransition(current.deliveryStatus, newStatus)) {
+            return@withContext Result.failure(
+                IllegalStateException("غير مسموح بانتقال التوصيل من ${current.deliveryStatus.titleArabic} إلى ${newStatus.titleArabic}")
+            )
+        }
+
         var updated = current.copy(
             deliveryStatus = newStatus,
             driverId = driverId ?: current.driverId,
@@ -256,12 +298,15 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             updatedAt = System.currentTimeMillis()
         )
 
-        // Keep orderStatus in sync if delivered or picked up
-        if (newStatus == DeliveryStatus.PICKED_UP && current.orderStatus != OrderStatus.PICKED_UP) {
+        // Keep orderStatus and paymentStatus in sync if delivered or picked up
+        if (newStatus in setOf(DeliveryStatus.PICKED_UP, DeliveryStatus.OUT_FOR_DELIVERY) && current.orderStatus in setOf(OrderStatus.APPROVED, OrderStatus.PREPARING, OrderStatus.READY_FOR_PICKUP)) {
             updated = updated.copy(orderStatus = OrderStatus.PICKED_UP)
         } else if (newStatus == DeliveryStatus.DELIVERED) {
-            updated = updated.copy(orderStatus = OrderStatus.DELIVERED)
-            // Credit driver earnings
+            updated = updated.copy(
+                orderStatus = OrderStatus.DELIVERED,
+                paymentStatus = if (current.paymentMethod == PaymentMethod.CASH_ON_DELIVERY) PaymentStatus.VERIFIED else current.paymentStatus
+            )
+            // Credit driver earnings and release driver
             val dId = driverId ?: current.driverId
             if (dId != null) {
                 val driver = dao.getDriverById(dId)
@@ -314,6 +359,18 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         actorRole: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+
+        // Terminal protection: Cannot assign driver to terminal or cancelled order
+        if (current.orderStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED, OrderStatus.DELIVERED)) {
+            return@withContext Result.failure(
+                IllegalStateException("لا يمكن تعيين مندوب لطلب ملغي أو مرفوض أو تم تسليمه")
+            )
+        }
+        if (current.deliveryStatus in setOf(DeliveryStatus.DELIVERED, DeliveryStatus.NOT_REQUIRED)) {
+            return@withContext Result.failure(
+                IllegalStateException("لا يمكن تعيين مندوب لطلب منتهي التوصيل")
+            )
+        }
 
         val updated = current.copy(
             driverId = driver.id,
