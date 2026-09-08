@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.BuildConfig
 import com.example.core.designsystem.*
 import com.example.core.model.OrderStatus
 import com.example.core.model.ProductStatus
@@ -99,20 +100,23 @@ fun PartnerPortalScreen(
                         }
                     }
 
-                    // Return to Customer App
-                    OutlinedButton(
-                        onClick = { onSwitchRole(UserRole.CUSTOMER) },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text("👤 العميل", style = MaterialTheme.typography.labelSmall)
+                    if (BuildConfig.DEBUG) {
+                        // Development-only role switch.
+                        OutlinedButton(
+                            onClick = { onSwitchRole(UserRole.CUSTOMER) },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("👤 العميل", style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                if (BuildConfig.DEBUG) {
                 // Partner Switcher (To easily test Restaurant vs Pharmacy vs Cafe vs Store)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -152,6 +156,7 @@ fun PartnerPortalScreen(
                             colors = SwitchDefaults.colors(checkedThumbColor = StatusGreen)
                         )
                     }
+                }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
