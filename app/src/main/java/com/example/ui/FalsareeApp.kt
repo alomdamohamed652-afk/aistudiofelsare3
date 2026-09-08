@@ -1,21 +1,14 @@
 package com.example.ui
 
-import android.os.Build
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.BuildConfig
@@ -42,7 +35,6 @@ fun FalsareeApp(
     val currentSession by viewModel.currentSession.collectAsStateWithLifecycle()
     val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
     val isUserLoggedIn by viewModel.isUserLoggedIn.collectAsStateWithLifecycle()
-
     val appSettings by viewModel.repository.appSettings.collectAsStateWithLifecycle(initialValue = null)
     val onboardingPages by viewModel.repository.activeOnboardingPages.collectAsStateWithLifecycle(initialValue = emptyList())
     val partners by viewModel.repository.allPartners.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -78,7 +70,6 @@ fun FalsareeApp(
     val driverPayoutRequests by viewModel.driverPayoutRequests.collectAsStateWithLifecycle()
     val activeDriverId by viewModel.activeDriverId.collectAsStateWithLifecycle()
     val activePartnerId by viewModel.activePartnerId.collectAsStateWithLifecycle()
-
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val categoryFilter by viewModel.selectedCategoryFilter.collectAsStateWithLifecycle()
     val onlyOpenFilter by viewModel.onlyOpenFilter.collectAsStateWithLifecycle()
@@ -99,25 +90,20 @@ fun FalsareeApp(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             contentWindowInsets = WindowInsets.safeDrawing
         ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                if (appSettings?.onboardingEnabled == true && !isOnboardingCompleted) {
-                    OnboardingScreen(
-                        pages = onboardingPages,
-                        onFinish = { viewModel.completeOnboarding() }
-                    )
-                } else if (!isUserLoggedIn) {
-                    AuthScreen(
-                        onLogin = { identifier, password -> viewModel.login(identifier, password) },
-                        onRegister = { name, phone, email, password, confirmPassword ->
-                            viewModel.register(name, phone, email, password, confirmPassword)
-                        }
-                    )
-                } else {
-                    when (currentRole) {
+            Box(Modifier.fillMaxSize().padding(innerPadding)) {
+                when {
+                    appSettings?.onboardingEnabled == true && !isOnboardingCompleted -> {
+                        OnboardingScreen(pages = onboardingPages, onFinish = { viewModel.completeOnboarding() })
+                    }
+                    !isUserLoggedIn -> {
+                        AuthScreen(
+                            onLogin = { identifier, password -> viewModel.login(identifier, password) },
+                            onRegister = { name, phone, email, password, confirmPassword ->
+                                viewModel.register(name, phone, email, password, confirmPassword)
+                            }
+                        )
+                    }
+                    else -> when (currentRole) {
                         UserRole.CUSTOMER -> {
                             CustomerPortalView(
                                 customerTab = customerTab,
@@ -139,37 +125,31 @@ fun FalsareeApp(
                                 tickets = tickets,
                                 orders = customerOrders,
                                 searchQuery = searchQuery,
-                                onQueryChange = { viewModel.setSearchQuery(it) },
+                                onQueryChange = viewModel::setSearchQuery,
                                 categoryFilter = categoryFilter,
-                                onCategorySelect = { viewModel.setCategoryFilter(it) },
+                                onCategorySelect = viewModel::setCategoryFilter,
                                 onlyOpenFilter = onlyOpenFilter,
-                                onToggleOnlyOpen = { viewModel.toggleOnlyOpenFilter() },
-                                onAddToCart = { partner, prod, qty, opts -> viewModel.addToCart(partner, prod, qty, opts) },
-                                onUpdateCartQty = { prod, delta -> viewModel.updateCartItemQuantity(prod, delta) },
-                                onApplyCoupon = { viewModel.applyCoupon(it) },
-                                onClearCart = { viewModel.clearCart() },
+                                onToggleOnlyOpen = viewModel::toggleOnlyOpenFilter,
+                                onAddToCart = viewModel::addToCart,
+                                onUpdateCartQty = viewModel::updateCartItemQuantity,
+                                onApplyCoupon = viewModel::applyCoupon,
+                                onClearCart = viewModel::clearCart,
                                 onConfirmOrder = { addr, notes, pay, receipt ->
-                                    viewModel.placeOrder(
-                                        deliveryAddress = addr,
-                                        customerNotes = notes,
-                                        paymentMethod = pay,
-                                        transferReceiptNote = receipt
-                                    )
+                                    viewModel.placeOrder(addr, notes, pay, receipt)
                                     showCartScreen = false
                                 },
-                                onSelectOrderToTrack = { viewModel.trackOrder(it) },
+                                onSelectOrderToTrack = viewModel::trackOrder,
                                 favoritePartnerIds = favoritePartnerIds,
-                                onToggleFavorite = { viewModel.toggleFavorite(it) },
-                                onReviewOrder = { viewModel.openReviewDialog(it) },
+                                onToggleFavorite = viewModel::toggleFavorite,
+                                onReviewOrder = viewModel::openReviewDialog,
                                 onOpenNotifications = { showNotificationSheet = true },
                                 unreadNotifications = unreadNotificationsCount,
-                                onAddAddress = { viewModel.addAddress(it) },
-                                onDeleteAddress = { viewModel.deleteAddress(it) },
-                                onCreateTicket = { viewModel.createSupportTicket(it) },
-                                onSwitchRole = { viewModel.switchRole(it) }
+                                onAddAddress = viewModel::addAddress,
+                                onDeleteAddress = viewModel::deleteAddress,
+                                onCreateTicket = viewModel::createSupportTicket,
+                                onSwitchRole = viewModel::switchRole
                             )
                         }
-
                         UserRole.ADMIN -> {
                             AdminPortalScreen(
                                 orders = orders,
@@ -179,173 +159,61 @@ fun FalsareeApp(
                                 onboardingPages = onboardingPages,
                                 appSettings = appSettings,
                                 activityLogs = activityLogs,
-                                onUpdateOrderStatus = { id, st, reason, force ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateOrderStatus(id, st, "مدير النظام", "الإدارة", reason, force)
-                                    }
-                                },
-                                onAssignDriver = { id, driver ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.assignDriverToOrder(id, driver, "مدير النظام", "الإدارة")
-                                    }
-                                },
-                                onReviewTransfer = { id, approved, reason ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.reviewBankTransfer(id, approved, reason, "قسم المالية")
-                                    }
-                                },
-                                onTogglePartnerStatus = { id, isOpen ->
-                                    coroutineScope.launch { viewModel.repository.setPartnerOpenStatus(id, isOpen) }
-                                },
-                                onToggleDriverStatus = { id, st ->
-                                    coroutineScope.launch { viewModel.repository.setDriverAvailability(id, st) }
-                                },
+                                onUpdateOrderStatus = { id, st, reason, force -> coroutineScope.launch { viewModel.repository.updateOrderStatus(id, st, "مدير النظام", "الإدارة", reason, force) } },
+                                onAssignDriver = { id, driver -> coroutineScope.launch { viewModel.repository.assignDriverToOrder(id, driver, "مدير النظام", "الإدارة") } },
+                                onReviewTransfer = { id, approved, reason -> coroutineScope.launch { viewModel.repository.reviewBankTransfer(id, approved, reason, "قسم المالية") } },
+                                onTogglePartnerStatus = { id, isOpen -> coroutineScope.launch { viewModel.repository.setPartnerOpenStatus(id, isOpen) } },
+                                onToggleDriverStatus = { id, st -> coroutineScope.launch { viewModel.repository.setDriverAvailability(id, st) } },
                                 onSaveHomeSection = { sec -> coroutineScope.launch { viewModel.repository.saveHomeSection(sec) } },
                                 onDeleteHomeSection = { sec -> coroutineScope.launch { viewModel.repository.deleteHomeSection(sec) } },
                                 onSaveOnboardingPage = { page -> coroutineScope.launch { viewModel.repository.saveOnboardingPage(page) } },
                                 onDeleteOnboardingPage = { page -> coroutineScope.launch { viewModel.repository.deleteOnboardingPage(page) } },
                                 onToggleOnboardingEnabled = { enabled -> coroutineScope.launch { viewModel.repository.setOnboardingEnabled(enabled) } },
-                                onSwitchRole = { viewModel.switchRole(it) }
+                                onSwitchRole = viewModel::switchRole
                             )
                         }
-
                         UserRole.DRIVER -> {
                             val activeDriver = drivers.find { it.id == activeDriverId }
                                 ?: if (BuildConfig.DEBUG) drivers.firstOrNull() else null
-                            val driverActiveOrder = orders.find {
-                                it.driverId == activeDriver?.id &&
-                                    it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED
-                            }
+                            val driverActiveOrder = orders.find { it.driverId == activeDriver?.id && it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED }
                             val openOrders = orders.filter {
                                 it.driverId == null &&
                                     it.deliveryStatus == com.example.core.model.DeliveryStatus.WAITING_FOR_DRIVER &&
-                                    it.orderStatus !in listOf(
-                                        com.example.core.model.OrderStatus.CANCELLED,
-                                        com.example.core.model.OrderStatus.REJECTED
-                                    )
+                                    it.orderStatus !in listOf(com.example.core.model.OrderStatus.CANCELLED, com.example.core.model.OrderStatus.REJECTED)
                             }
                             val driverOrders = orders.filter { it.driverId == activeDriver?.id }
-
                             DriverPortalScreen(
                                 driver = activeDriver,
                                 activeOrder = driverActiveOrder,
                                 openOrders = openOrders,
                                 driverOrders = driverOrders,
                                 payoutRequests = driverPayoutRequests,
-                                onRequestPayout = { amt -> viewModel.requestDriverPayout(amt) },
-                                onToggleAvailability = { st ->
-                                    activeDriver?.let { driver ->
-                                        coroutineScope.launch { viewModel.repository.setDriverAvailability(driver.id, st) }
-                                    }
-                                },
-                                onAcceptOrder = { ord ->
-                                    activeDriver?.let { driver ->
-                                        coroutineScope.launch {
-                                            viewModel.repository.assignDriverToOrder(ord.id, driver, driver.name, "المندوب")
-                                        }
-                                    }
-                                },
-                                onConfirmPickup = { ord ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateDeliveryStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.DeliveryStatus.OUT_FOR_DELIVERY,
-                                            driverId = activeDriver?.id,
-                                            driverName = activeDriver?.name,
-                                            actor = activeDriver?.name ?: "المندوب",
-                                            actorRole = "المندوب",
-                                            reason = "تم استلام الطلب من المحل والانطلاق للتسليم"
-                                        )
-                                    }
-                                },
-                                onConfirmDelivered = { ord ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateDeliveryStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.DeliveryStatus.DELIVERED,
-                                            driverId = activeDriver?.id,
-                                            driverName = activeDriver?.name,
-                                            actor = activeDriver?.name ?: "المندوب",
-                                            actorRole = "المندوب",
-                                            reason = "تم تسليم الطلب للعميل واستلام المبلغ"
-                                        )
-                                    }
-                                },
-                                onSwitchRole = { viewModel.switchRole(it) }
+                                onRequestPayout = viewModel::requestDriverPayout,
+                                onToggleAvailability = { st -> activeDriver?.let { d -> coroutineScope.launch { viewModel.repository.setDriverAvailability(d.id, st) } } },
+                                onAcceptOrder = { ord -> activeDriver?.let { d -> coroutineScope.launch { viewModel.repository.assignDriverToOrder(ord.id, d, d.name, "المندوب") } } },
+                                onConfirmPickup = { ord -> coroutineScope.launch { viewModel.repository.updateDeliveryStatus(ord.id, com.example.core.model.DeliveryStatus.OUT_FOR_DELIVERY, activeDriver?.id, activeDriver?.name, actor = activeDriver?.name ?: "المندوب", actorRole = "المندوب", reason = "تم استلام الطلب من المحل والانطلاق للتسليم") } },
+                                onConfirmDelivered = { ord -> coroutineScope.launch { viewModel.repository.updateDeliveryStatus(ord.id, com.example.core.model.DeliveryStatus.DELIVERED, activeDriver?.id, activeDriver?.name, actor = activeDriver?.name ?: "المندوب", actorRole = "المندوب", reason = "تم تسليم الطلب للعميل واستلام المبلغ") } },
+                                onSwitchRole = viewModel::switchRole
                             )
                         }
-
                         UserRole.PARTNER -> {
                             val activePartner = partners.find { it.id == activePartnerId }
                                 ?: if (BuildConfig.DEBUG) partners.firstOrNull() else null
                             val partnerProducts = products.filter { it.partnerId == activePartner?.id }
-
                             PartnerPortalScreen(
                                 allPartners = partners,
                                 activePartner = activePartner,
                                 orders = orders,
                                 products = partnerProducts,
-                                onSelectPartner = { viewModel.setActivePartnerId(it) },
-                                onToggleOpen = { isOpen ->
-                                    activePartner?.let { partner ->
-                                        coroutineScope.launch { viewModel.repository.setPartnerOpenStatus(partner.id, isOpen) }
-                                    }
-                                },
-                                onAcceptOrder = { ord ->
-                                    activePartner?.let { partner ->
-                                        coroutineScope.launch {
-                                            viewModel.repository.updateOrderStatus(
-                                                orderId = ord.id,
-                                                newStatus = com.example.core.model.OrderStatus.APPROVED,
-                                                actor = partner.name,
-                                                actorRole = "الشريك",
-                                                reason = "تم قبول الطلب وجاري التحضير"
-                                            )
-                                        }
-                                    }
-                                },
-                                onRejectOrder = { ord, reason ->
-                                    activePartner?.let { partner ->
-                                        coroutineScope.launch {
-                                            viewModel.repository.updateOrderStatus(
-                                                orderId = ord.id,
-                                                newStatus = com.example.core.model.OrderStatus.REJECTED,
-                                                actor = partner.name,
-                                                actorRole = "الشريك",
-                                                reason = reason
-                                            )
-                                        }
-                                    }
-                                },
-                                onStartPreparing = { ord, _ ->
-                                    activePartner?.let { partner ->
-                                        coroutineScope.launch {
-                                            viewModel.repository.updateOrderStatus(
-                                                orderId = ord.id,
-                                                newStatus = com.example.core.model.OrderStatus.PREPARING,
-                                                actor = partner.name,
-                                                actorRole = "الشريك",
-                                                reason = "بدء إعداد الطلب بالمطبخ"
-                                            )
-                                        }
-                                    }
-                                },
-                                onReadyForPickup = { ord ->
-                                    activePartner?.let { partner ->
-                                        coroutineScope.launch {
-                                            viewModel.repository.updateOrderStatus(
-                                                orderId = ord.id,
-                                                newStatus = com.example.core.model.OrderStatus.READY_FOR_PICKUP,
-                                                actor = partner.name,
-                                                actorRole = "الشريك",
-                                                reason = "تم تجهيز الطلب وجاهز لاستلام المندوب"
-                                            )
-                                        }
-                                    }
-                                },
+                                onSelectPartner = viewModel::setActivePartnerId,
+                                onToggleOpen = { isOpen -> activePartner?.let { p -> coroutineScope.launch { viewModel.repository.setPartnerOpenStatus(p.id, isOpen) } } },
+                                onAcceptOrder = { ord -> activePartner?.let { p -> coroutineScope.launch { viewModel.repository.updateOrderStatus(ord.id, com.example.core.model.OrderStatus.APPROVED, p.name, "الشريك", "تم قبول الطلب وجاري التحضير") } } },
+                                onRejectOrder = { ord, reason -> activePartner?.let { p -> coroutineScope.launch { viewModel.repository.updateOrderStatus(ord.id, com.example.core.model.OrderStatus.REJECTED, p.name, "الشريك", reason) } } },
+                                onStartPreparing = { ord, _ -> activePartner?.let { p -> coroutineScope.launch { viewModel.repository.updateOrderStatus(ord.id, com.example.core.model.OrderStatus.PREPARING, p.name, "الشريك", "بدء إعداد الطلب بالمطبخ") } } },
+                                onReadyForPickup = { ord -> activePartner?.let { p -> coroutineScope.launch { viewModel.repository.updateOrderStatus(ord.id, com.example.core.model.OrderStatus.READY_FOR_PICKUP, p.name, "الشريك", "تم تجهيز الطلب وجاهز لاستلام المندوب") } } },
                                 onSaveProduct = { prod -> coroutineScope.launch { viewModel.repository.saveProduct(prod) } },
                                 onUpdateProductStatus = { id, st -> coroutineScope.launch { viewModel.repository.updateProductStatus(id, st) } },
-                                onSwitchRole = { viewModel.switchRole(it) }
+                                onSwitchRole = viewModel::switchRole
                             )
                         }
                     }
@@ -373,10 +241,8 @@ fun FalsareeApp(
             if (orderToReview != null) {
                 OrderReviewDialog(
                     order = orderToReview,
-                    onDismiss = { viewModel.closeReviewDialog() },
-                    onSubmit = { partnerRating, driverRating, notes ->
-                        viewModel.submitReview(orderToReview.id, partnerRating, driverRating, notes)
-                    }
+                    onDismiss = viewModel::closeReviewDialog,
+                    onSubmit = { partnerRating, driverRating, notes -> viewModel.submitReview(orderToReview.id, partnerRating, driverRating, notes) }
                 )
             }
         }
@@ -384,13 +250,7 @@ fun FalsareeApp(
         if (showNotificationSheet) {
             NotificationCenterSheet(
                 notifications = notifications,
-                onMarkAllRead = {
-                    currentSession?.let { session ->
-                        coroutineScope.launch {
-                            viewModel.repository.markAllNotificationsReadForUser(currentRole, session.userId)
-                        }
-                    }
-                },
+                onMarkAllRead = { currentSession?.let { s -> coroutineScope.launch { viewModel.repository.markAllNotificationsReadForUser(currentRole, s.userId) } } },
                 onDismiss = { showNotificationSheet = false }
             )
         }
