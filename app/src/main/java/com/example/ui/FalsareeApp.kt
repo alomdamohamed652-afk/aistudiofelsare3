@@ -38,6 +38,7 @@ fun FalsareeApp(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val currentRole by viewModel.currentRole.collectAsStateWithLifecycle()
+    val currentSession by viewModel.currentSession.collectAsStateWithLifecycle()
     val isOnboardingCompleted by viewModel.isOnboardingCompleted.collectAsStateWithLifecycle()
     val isUserLoggedIn by viewModel.isUserLoggedIn.collectAsStateWithLifecycle()
 
@@ -50,12 +51,19 @@ fun FalsareeApp(
     val drivers by viewModel.repository.allDrivers.collectAsStateWithLifecycle(initialValue = emptyList())
     val homeSections by viewModel.repository.activeHomeSections.collectAsStateWithLifecycle(initialValue = emptyList())
     val coupons by viewModel.repository.allCoupons.collectAsStateWithLifecycle(initialValue = emptyList())
-    val addresses by viewModel.repository.allAddresses.collectAsStateWithLifecycle(initialValue = emptyList())
-    val tickets by viewModel.repository.allTickets.collectAsStateWithLifecycle(initialValue = emptyList())
+    val customerOrders by viewModel.customerOrders.collectAsStateWithLifecycle()
+    val addresses by viewModel.customerAddresses.collectAsStateWithLifecycle()
+    val tickets by viewModel.customerTickets.collectAsStateWithLifecycle()
     val activityLogs by viewModel.repository.recentActivityLogs.collectAsStateWithLifecycle(initialValue = emptyList())
 
-    val notifications by viewModel.repository.getNotificationsForRole(currentRole).collectAsStateWithLifecycle(initialValue = emptyList())
-    val unreadNotificationsCount by viewModel.repository.getUnreadNotificationsCount(currentRole).collectAsStateWithLifecycle(initialValue = 0)
+    val notifications by remember(currentSession, currentRole) {
+        currentSession?.let { viewModel.repository.getNotificationsForUser(currentRole, it.userId) }
+            ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val unreadNotificationsCount by remember(currentSession, currentRole) {
+        currentSession?.let { viewModel.repository.getUnreadNotificationsCountForUser(currentRole, it.userId) }
+            ?: kotlinx.coroutines.flow.flowOf(0)
+    }.collectAsStateWithLifecycle(initialValue = 0)
 
     val customerTab by viewModel.customerSelectedTab.collectAsStateWithLifecycle()
     val selectedPartner by viewModel.selectedPartner.collectAsStateWithLifecycle()
@@ -94,7 +102,8 @@ fun FalsareeApp(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             contentWindowInsets = WindowInsets.safeDrawing,
             floatingActionButton = {
-                // Persistent Role Switcher FAB to test Customer, Admin, Driver, Partner instantly
+                if (isUserLoggedIn) {
+                // Development role switcher; never available before authentication.
                 FloatingActionButton(
                     onClick = { showRolePickerSheet = true },
                     containerColor = BrandSecondary,
@@ -116,6 +125,7 @@ fun FalsareeApp(
                         )
                     }
                 }
+                }
             }
         ) { innerPadding ->
             Box(
@@ -133,9 +143,8 @@ fun FalsareeApp(
                 // 2. Auth Screen check
                 else if (!isUserLoggedIn) {
                     AuthScreen(
-                        onLoginSuccess = { role ->
-                            viewModel.switchRole(role)
-                        }
+                        onLogin = { phone -> viewModel.login(phone) },
+                        onRegister = { name, phone, email -> viewModel.register(name, phone, email) }
                     )
                 }
                 // 3. Active Role UI
@@ -160,7 +169,7 @@ fun FalsareeApp(
                                 addresses = addresses,
                                 coupons = coupons,
                                 tickets = tickets,
-                                orders = orders,
+                                orders = customerOrders,
                                 searchQuery = searchQuery,
                                 onQueryChange = { viewModel.setSearchQuery(it) },
                                 categoryFilter = categoryFilter,
@@ -190,15 +199,9 @@ fun FalsareeApp(
                                 onReviewOrder = { viewModel.openReviewDialog(it) },
                                 onOpenNotifications = { showNotificationSheet = true },
                                 unreadNotifications = unreadNotificationsCount,
-                                onAddAddress = { addr ->
-                                    coroutineScope.launch { viewModel.repository.addAddress(addr) }
-                                },
-                                onDeleteAddress = { addr ->
-                                    coroutineScope.launch { viewModel.repository.deleteAddress(addr) }
-                                },
-                                onCreateTicket = { ticket ->
-                                    coroutineScope.launch { viewModel.repository.createTicket(ticket) }
-                                },
+                                onAddAddress = { addr -> viewModel.addAddress(addr) },
+                                onDeleteAddress = { addr -> viewModel.deleteAddress(addr) },
+                                onCreateTicket = { ticket -> viewModel.createSupportTicket(ticket) },
                                 onSwitchRole = { viewModel.switchRole(it) }
                             )
                         }
@@ -454,7 +457,11 @@ fun FalsareeApp(
             NotificationCenterSheet(
                 notifications = notifications,
                 onMarkAllRead = {
-                    coroutineScope.launch { viewModel.repository.markAllNotificationsRead(currentRole) }
+                    currentSession?.let { session ->
+                        coroutineScope.launch {
+                            viewModel.repository.markAllNotificationsReadForUser(currentRole, session.userId)
+                        }
+                    }
                 },
                 onDismiss = { showNotificationSheet = false }
             )

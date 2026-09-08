@@ -40,6 +40,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val allCoupons: Flow<List<CouponEntity>> = dao.getAllCoupons()
     val allDrivers: Flow<List<DriverProfileEntity>> = dao.getAllDrivers()
     val allTickets: Flow<List<SupportTicketEntity>> = dao.getAllTickets()
+    fun getTicketsForCustomer(customerId: Long): Flow<List<SupportTicketEntity>> = dao.getTicketsForCustomer(customerId)
     val allAddresses: Flow<List<CustomerAddressEntity>> = dao.getAllAddresses()
 
     fun getNotificationsForRole(role: UserRole): Flow<List<NotificationEntity>> = dao.getNotificationsForRole(role)
@@ -53,7 +54,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     fun getAddressesForCustomer(customerId: Long): Flow<List<CustomerAddressEntity>> = dao.getAddressesForCustomer(customerId)
 
-    suspend fun toggleFavorite(partnerId: Long, isFav: Boolean, customerId: Long = 1L) = withContext(Dispatchers.IO) {
+    suspend fun toggleFavorite(partnerId: Long, isFav: Boolean, customerId: Long) = withContext(Dispatchers.IO) {
         if (isFav) {
             dao.removeFavoriteForCustomer(partnerId, customerId)
         } else {
@@ -61,7 +62,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         }
     }
 
-    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String, customerId: Long = 1L) = withContext(Dispatchers.IO) {
+    suspend fun submitReview(orderId: Long, partnerRating: Int, driverRating: Int, notes: String, customerId: Long) = withContext(Dispatchers.IO) {
         dao.insertReview(
             OrderReviewEntity(
                 customerId = customerId,
@@ -256,6 +257,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         // Customer notification
         dao.insertNotification(
             NotificationEntity(
+                targetUserId = current.customerId,
                 targetRole = UserRole.CUSTOMER,
                 category = NotificationCategory.ORDER,
                 title = "تحديث لطلبك ${current.orderNumber}",
@@ -347,6 +349,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
         dao.insertNotification(
             NotificationEntity(
+                targetUserId = current.customerId,
                 targetRole = UserRole.CUSTOMER,
                 category = NotificationCategory.ORDER,
                 title = "تحديث توصيل طلبك ${current.orderNumber}",
@@ -445,6 +448,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
         dao.insertNotification(
             NotificationEntity(
+                targetUserId = current.customerId,
                 targetRole = UserRole.CUSTOMER,
                 category = NotificationCategory.PAYMENT,
                 title = if (isApproved) "تم اعتماد تحويلك المالي ✅" else "تم رفض إيصال التحويل ❌",
@@ -562,6 +566,10 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     // --- Notifications ---
     suspend fun markAllNotificationsRead(role: UserRole) = withContext(Dispatchers.IO) {
         dao.markAllNotificationsAsRead(role)
+    }
+
+    suspend fun markAllNotificationsReadForUser(role: UserRole, userId: Long) = withContext(Dispatchers.IO) {
+        dao.markAllNotificationsAsReadForUser(role, userId)
     }
 
     // --- Initial Seeding ---
@@ -863,6 +871,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         dao.insertAddresses(
             listOf(
                 CustomerAddressEntity(
+                    customerId = 1L,
                     label = "المنزل",
                     area = "المهندسين",
                     street = "شارع سوريا متفرع من مصدق",
@@ -873,6 +882,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                     isDefault = true
                 ),
                 CustomerAddressEntity(
+                    customerId = 1L,
                     label = "العمل",
                     area = "الدقي",
                     street = "شارع مصدق الرئيسي",

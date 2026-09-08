@@ -166,6 +166,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM support_tickets ORDER BY createdAt DESC")
     fun getAllTickets(): Flow<List<SupportTicketEntity>>
 
+    @Query("SELECT * FROM support_tickets WHERE customerId = :customerId ORDER BY createdAt DESC")
+    fun getTicketsForCustomer(customerId: Long): Flow<List<SupportTicketEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTicket(ticket: SupportTicketEntity): Long
 
@@ -189,13 +192,13 @@ interface FalsareeDao {
     suspend fun deleteAddress(address: CustomerAddressEntity)
 
     // --- Notifications ---
-    @Query("SELECT * FROM notifications WHERE targetRole = :role OR targetUserId = :userId ORDER BY createdAt DESC")
+    @Query("SELECT * FROM notifications WHERE targetUserId = :userId OR (targetUserId IS NULL AND targetRole = :role) ORDER BY createdAt DESC")
     fun getNotificationsForUser(role: UserRole, userId: Long): Flow<List<NotificationEntity>>
 
     @Query("SELECT * FROM notifications WHERE targetRole = :role ORDER BY createdAt DESC")
     fun getNotificationsForRole(role: UserRole): Flow<List<NotificationEntity>>
 
-    @Query("SELECT COUNT(*) FROM notifications WHERE (targetRole = :role OR targetUserId = :userId) AND isRead = 0")
+    @Query("SELECT COUNT(*) FROM notifications WHERE (targetUserId = :userId OR (targetUserId IS NULL AND targetRole = :role)) AND isRead = 0")
     fun getUnreadNotificationsCountForUser(role: UserRole, userId: Long): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM notifications WHERE targetRole = :role AND isRead = 0")
@@ -207,7 +210,7 @@ interface FalsareeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNotifications(notifications: List<NotificationEntity>)
 
-    @Query("UPDATE notifications SET isRead = 1 WHERE targetRole = :role OR targetUserId = :userId")
+    @Query("UPDATE notifications SET isRead = 1 WHERE targetUserId = :userId OR (targetUserId IS NULL AND targetRole = :role)")
     suspend fun markAllNotificationsAsReadForUser(role: UserRole, userId: Long)
 
     @Query("UPDATE notifications SET isRead = 1 WHERE targetRole = :role")

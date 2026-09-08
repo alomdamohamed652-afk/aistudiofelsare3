@@ -19,55 +19,28 @@ class LocalAuthRepository(
     private val dao: FalsareeDao
 ) : AuthRepository {
 
-    private val _currentSession = MutableStateFlow<UserSession?>(
-        // Default initial session for immediate showcase (User #1 - Customer)
-        UserSession(
-            userId = 1L,
-            name = "عمرو إبراهيم",
-            phone = "01011122233",
-            email = "amr@falsaree.com",
-            role = UserRole.CUSTOMER,
-            associatedCustomerId = 1L
-        )
-    )
+    private val _currentSession = MutableStateFlow<UserSession?>(null)
     override val currentSession: StateFlow<UserSession?> = _currentSession.asStateFlow()
 
-    private val _authState = MutableStateFlow<AuthState>(
-        AuthState.Authenticated(_currentSession.value!!)
-    )
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
     override val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     override suspend fun login(phone: String, role: UserRole): Result<UserSession> = withContext(Dispatchers.IO) {
         val existingUser = dao.getUserByPhone(phone)
-        val session = if (existingUser != null) {
+        val session = existingUser?.let {
             UserSession(
-                userId = existingUser.id,
-                name = existingUser.name,
-                phone = existingUser.phone,
-                email = existingUser.email,
-                role = existingUser.role,
-                associatedCustomerId = if (existingUser.role == UserRole.CUSTOMER) existingUser.id else null,
-                associatedDriverId = existingUser.associatedDriverId,
-                associatedPartnerId = existingUser.associatedPartnerId
+                userId = it.id,
+                name = it.name,
+                phone = it.phone,
+                email = it.email,
+                role = it.role,
+                associatedCustomerId = if (it.role == UserRole.CUSTOMER) it.id else null,
+                associatedDriverId = it.associatedDriverId,
+                associatedPartnerId = it.associatedPartnerId
             )
-        } else {
-            // Auto-provision local user if logging in first time in prototype
-            val newId = dao.insertUser(
-                UserEntity(
-                    name = "مستخدم فالسريع",
-                    phone = phone,
-                    email = "",
-                    role = role
-                )
-            )
-            UserSession(
-                userId = newId,
-                name = "مستخدم فالسريع",
-                phone = phone,
-                role = role,
-                associatedCustomerId = if (role == UserRole.CUSTOMER) newId else null
-            )
-        }
+        } ?: return@withContext Result.failure(
+            IllegalArgumentException("لا يوجد حساب مسجل بهذا الرقم")
+        )
 
         _currentSession.value = session
         _authState.value = AuthState.Authenticated(session)
@@ -82,19 +55,19 @@ class LocalAuthRepository(
     ): Result<UserSession> = withContext(Dispatchers.IO) {
         try {
             val existing = dao.getUserByPhone(phone)
-            val userId = if (existing != null) {
-                dao.updateUser(existing.copy(name = name, email = email, role = role))
-                existing.id
-            } else {
-                dao.insertUser(
-                    UserEntity(
-                        name = name,
-                        phone = phone,
-                        email = email,
-                        role = role
-                    )
+            if (existing != null) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("يوجد حساب مسجل بهذا الرقم")
                 )
             }
+            val userId = dao.insertUser(
+                UserEntity(
+                    name = name,
+                    phone = phone,
+                    email = email,
+                    role = role
+                )
+            )
 
             val session = UserSession(
                 userId = userId,
