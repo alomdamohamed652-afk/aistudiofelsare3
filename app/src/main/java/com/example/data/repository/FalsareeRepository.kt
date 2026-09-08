@@ -568,6 +568,10 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         dao.markAllNotificationsAsRead(role)
     }
 
+    suspend fun markAllNotificationsReadForUser(role: UserRole, userId: Long) = withContext(Dispatchers.IO) {
+        dao.markAllNotificationsAsReadForUser(role, userId)
+    }
+
     // --- Initial Seeding ---
     suspend fun seedInitialDataIfEmpty() = withContext(Dispatchers.IO) {
         val partners = dao.getAllPartners().firstOrNull()
