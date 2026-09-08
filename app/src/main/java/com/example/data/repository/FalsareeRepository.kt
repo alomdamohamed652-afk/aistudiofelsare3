@@ -864,6 +864,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         dao.insertAddresses(
             listOf(
                 CustomerAddressEntity(
+                    customerId = 1L,
                     label = "المنزل",
                     area = "المهندسين",
                     street = "شارع سوريا متفرع من مصدق",
@@ -874,6 +875,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                     isDefault = true
                 ),
                 CustomerAddressEntity(
+                    customerId = 1L,
                     label = "العمل",
                     area = "الدقي",
                     street = "شارع مصدق الرئيسي",
