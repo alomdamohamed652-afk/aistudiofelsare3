@@ -1,5 +1,6 @@
 ﻿package com.example.data.repository
 
+import android.content.Context
 import com.example.BuildConfig
 import com.example.core.model.AuthState
 import com.example.core.model.UserRole
@@ -15,11 +16,14 @@ import java.security.MessageDigest
 
 /**
  * Local authentication implementation used until Supabase Auth is integrated.
- * This is a prototype auth layer; production authentication should use Supabase Auth.
+ * Credentials are hashed locally and the current user id is persisted for this prototype.
  */
 class LocalAuthRepository(
+    context: Context,
     private val dao: FalsareeDao
 ) : AuthRepository {
+
+    private val preferences = context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     private val _currentSession = MutableStateFlow<UserSession?>(null)
     override val currentSession: StateFlow<UserSession?> = _currentSession.asStateFlow()
@@ -36,8 +40,7 @@ class LocalAuthRepository(
             return@withContext Result.failure(IllegalArgumentException("كلمة المرور مطلوبة"))
         }
 
-        val lookupEmail = normalizedIdentifier.lowercase()
-        val existingUser = dao.getUserByIdentifier(normalizedIdentifier, lookupEmail)
+        val existingUser = dao.getUserByIdentifier(normalizedIdentifier, normalizedIdentifier.lowercase())
             ?: return@withContext Result.failure(IllegalArgumentException("رقم الهاتف أو البريد الإلكتروني غير مسجل"))
 
         if (existingUser.passwordHash.isBlank() || existingUser.passwordHash != hashPassword(password)) {
@@ -45,8 +48,8 @@ class LocalAuthRepository(
         }
 
         val session = existingUser.toSession()
-        _currentSession.value = session
-        _authState.value = AuthState.Authenticated(session)
+        persistSession(session.userId)
+        setAuthenticated(session)
         Result.success(session)
     }
 
@@ -103,8 +106,8 @@ class LocalAuthRepository(
                 associatedCustomerId = userId
             )
 
-            _currentSession.value = session
-            _authState.value = AuthState.Authenticated(session)
+            persistSession(userId)
+            setAuthenticated(session)
             Result.success(session)
         } catch (e: Exception) {
             Result.failure(e)
@@ -112,6 +115,7 @@ class LocalAuthRepository(
     }
 
     override suspend fun logout() {
+        preferences.edit().remove(KEY_USER_ID).apply()
         _currentSession.value = null
         _authState.value = AuthState.Unauthenticated
     }
@@ -131,7 +135,33 @@ class LocalAuthRepository(
         return updated
     }
 
-    override suspend fun restoreSession(): UserSession? = _currentSession.value
+    override suspend fun restoreSession(): UserSession? = withContext(Dispatchers.IO) {
+        val userId = preferences.getLong(KEY_USER_ID, 0L)
+        if (userId <= 0L) {
+            return@withContext null
+        }
+
+        val user = dao.getUserById(userId)
+        if (user == null) {
+            preferences.edit().remove(KEY_USER_ID).apply()
+            _currentSession.value = null
+            _authState.value = AuthState.Unauthenticated
+            return@withContext null
+        }
+
+        val session = user.toSession()
+        setAuthenticated(session)
+        session
+    }
+
+    private fun setAuthenticated(session: UserSession) {
+        _currentSession.value = session
+        _authState.value = AuthState.Authenticated(session)
+    }
+
+    private fun persistSession(userId: Long) {
+        preferences.edit().putLong(KEY_USER_ID, userId).apply()
+    }
 
     private fun UserEntity.toSession(): UserSession = UserSession(
         userId = id,
@@ -147,5 +177,10 @@ class LocalAuthRepository(
     private fun hashPassword(password: String): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(password.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private companion object {
+        const val PREFERENCES_NAME = "falsaree_auth"
+        const val KEY_USER_ID = "current_user_id"
     }
 }
