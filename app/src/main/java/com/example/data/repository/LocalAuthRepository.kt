@@ -1,6 +1,5 @@
 ﻿package com.example.data.repository
 
-import android.content.Context
 import com.example.BuildConfig
 import com.example.core.model.AuthState
 import com.example.core.model.UserRole
@@ -16,14 +15,11 @@ import java.security.MessageDigest
 
 /**
  * Local authentication implementation used until Supabase Auth is integrated.
- * Credentials are hashed locally and the current user id is persisted for this prototype.
+ * Credentials are hashed locally for this prototype.
  */
 class LocalAuthRepository(
-    context: Context,
     private val dao: FalsareeDao
 ) : AuthRepository {
-
-    private val preferences = context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     private val _currentSession = MutableStateFlow<UserSession?>(null)
     override val currentSession: StateFlow<UserSession?> = _currentSession.asStateFlow()
@@ -48,7 +44,6 @@ class LocalAuthRepository(
         }
 
         val session = existingUser.toSession()
-        persistSession(session.userId)
         setAuthenticated(session)
         Result.success(session)
     }
@@ -105,8 +100,6 @@ class LocalAuthRepository(
                 role = UserRole.CUSTOMER,
                 associatedCustomerId = userId
             )
-
-            persistSession(userId)
             setAuthenticated(session)
             Result.success(session)
         } catch (e: Exception) {
@@ -115,12 +108,11 @@ class LocalAuthRepository(
     }
 
     override suspend fun logout() {
-        preferences.edit().remove(KEY_USER_ID).apply()
         _currentSession.value = null
         _authState.value = AuthState.Unauthenticated
     }
 
-    /** Development-only role switching. Never callable in release builds. */
+    /** Development-only role switching. Release builds cannot elevate roles. */
     override suspend fun switchDevelopmentRole(role: UserRole): UserSession {
         if (!BuildConfig.DEBUG) {
             throw IllegalStateException("تبديل الأدوار غير متاح في نسخة الإنتاج")
@@ -135,32 +127,11 @@ class LocalAuthRepository(
         return updated
     }
 
-    override suspend fun restoreSession(): UserSession? = withContext(Dispatchers.IO) {
-        val userId = preferences.getLong(KEY_USER_ID, 0L)
-        if (userId <= 0L) {
-            return@withContext null
-        }
-
-        val user = dao.getUserById(userId)
-        if (user == null) {
-            preferences.edit().remove(KEY_USER_ID).apply()
-            _currentSession.value = null
-            _authState.value = AuthState.Unauthenticated
-            return@withContext null
-        }
-
-        val session = user.toSession()
-        setAuthenticated(session)
-        session
-    }
+    override suspend fun restoreSession(): UserSession? = _currentSession.value
 
     private fun setAuthenticated(session: UserSession) {
         _currentSession.value = session
         _authState.value = AuthState.Authenticated(session)
-    }
-
-    private fun persistSession(userId: Long) {
-        preferences.edit().putLong(KEY_USER_ID, userId).apply()
     }
 
     private fun UserEntity.toSession(): UserSession = UserSession(
@@ -177,10 +148,5 @@ class LocalAuthRepository(
     private fun hashPassword(password: String): String {
         val bytes = MessageDigest.getInstance("SHA-256").digest(password.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
-    }
-
-    private companion object {
-        const val PREFERENCES_NAME = "falsaree_auth"
-        const val KEY_USER_ID = "current_user_id"
     }
 }
