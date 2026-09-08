@@ -26,12 +26,15 @@ import com.example.core.model.UserRole
 import com.example.data.local.CouponEntity
 import com.example.data.local.CustomerAddressEntity
 import com.example.data.local.SupportTicketEntity
+import com.example.core.model.UserSession
 
 @Composable
 fun CustomerProfileScreen(
     addresses: List<CustomerAddressEntity>,
     coupons: List<CouponEntity>,
     tickets: List<SupportTicketEntity>,
+    currentSession: UserSession?,
+    onLogout: () -> Unit,
     onAddAddress: (CustomerAddressEntity) -> Unit,
     onDeleteAddress: (CustomerAddressEntity) -> Unit,
     onCreateTicket: (SupportTicketEntity) -> Unit,
@@ -73,9 +76,11 @@ fun CustomerProfileScreen(
                     }
                     Spacer(modifier = Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("عمرو إبراهيم", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("01011122233", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                        Text("amr@example.com", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        Text(currentSession?.name ?: "المستخدم", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(currentSession?.phone.orEmpty(), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        if (!currentSession?.email.isNullOrBlank()) {
+                            Text(currentSession?.email.orEmpty(), style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                        }
                     }
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -90,6 +95,18 @@ fun CustomerProfileScreen(
                         )
                     }
                 }
+            }
+        }
+
+        item {
+            OutlinedButton(
+                onClick = onLogout,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = StatusRed)
+            ) {
+                Icon(Icons.Default.Logout, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("تسجيل الخروج")
             }
         }
 
