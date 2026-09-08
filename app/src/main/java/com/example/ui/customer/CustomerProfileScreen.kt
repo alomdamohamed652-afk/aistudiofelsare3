@@ -377,6 +377,7 @@ fun CustomerProfileScreen(
                         if (street.isNotBlank()) {
                             onAddAddress(
                                 CustomerAddressEntity(
+                                    customerId = 0L,
                                     label = label,
                                     area = area,
                                     street = street,
@@ -423,8 +424,9 @@ fun CustomerProfileScreen(
                         if (subject.isNotBlank() && message.isNotBlank()) {
                             onCreateTicket(
                                 SupportTicketEntity(
+                                    customerId = 0L,
                                     ticketNumber = "TK-${(100..999).random()}",
-                                    customerName = "عمرو إبراهيم",
+                                    customerName = "",
                                     category = category,
                                     subject = subject,
                                     message = message
