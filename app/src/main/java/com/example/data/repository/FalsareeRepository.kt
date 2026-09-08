@@ -257,6 +257,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         // Customer notification
         dao.insertNotification(
             NotificationEntity(
+                targetUserId = current.customerId,
                 targetRole = UserRole.CUSTOMER,
                 category = NotificationCategory.ORDER,
                 title = "تحديث لطلبك ${current.orderNumber}",
@@ -348,6 +349,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
         dao.insertNotification(
             NotificationEntity(
+                targetUserId = current.customerId,
                 targetRole = UserRole.CUSTOMER,
                 category = NotificationCategory.ORDER,
                 title = "تحديث توصيل طلبك ${current.orderNumber}",
@@ -446,6 +448,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
         dao.insertNotification(
             NotificationEntity(
+                targetUserId = current.customerId,
                 targetRole = UserRole.CUSTOMER,
                 category = NotificationCategory.PAYMENT,
                 title = if (isApproved) "تم اعتماد تحويلك المالي ✅" else "تم رفض إيصال التحويل ❌",
