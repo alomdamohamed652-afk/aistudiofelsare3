@@ -144,10 +144,15 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     // --- Role Switching (dev tool — routes through auth for session consistency) ---
     fun switchRole(role: UserRole) {
+        if (!BuildConfig.DEBUG) {
+            _alertMessage.value = "تبديل الأدوار متاح في نسخة التطوير فقط"
+            return
+        }
         viewModelScope.launch {
-            val updatedSession = authRepository.switchDevelopmentRole(role)
-            updatedSession.associatedDriverId?.let { _activeDriverId.value = it }
-            updatedSession.associatedPartnerId?.let { _activePartnerId.value = it }
+            runCatching { authRepository.switchDevelopmentRole(role) }
+                .onFailure {
+                    _alertMessage.value = it.message ?: "تعذر تبديل الدور"
+                }
         }
     }
 
