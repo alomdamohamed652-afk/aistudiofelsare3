@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Local implementation of AuthRepository backed by Room database.
- * Supports persistent local sessions, real user creation, and isolated development role switching.
+ * Authentication is local-only until the production Supabase auth layer is integrated.
  */
 class LocalAuthRepository(
     private val dao: FalsareeDao
@@ -26,7 +26,12 @@ class LocalAuthRepository(
     override val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
     override suspend fun login(phone: String, role: UserRole): Result<UserSession> = withContext(Dispatchers.IO) {
-        val existingUser = dao.getUserByPhone(phone)
+        val normalizedPhone = phone.trim()
+        if (normalizedPhone.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("رقم الهاتف مطلوب"))
+        }
+
+        val existingUser = dao.getUserByPhone(normalizedPhone)
         val session = existingUser?.let {
             UserSession(
                 userId = it.id,
@@ -54,26 +59,37 @@ class LocalAuthRepository(
         role: UserRole
     ): Result<UserSession> = withContext(Dispatchers.IO) {
         try {
-            val existing = dao.getUserByPhone(phone)
+            val normalizedName = name.trim()
+            val normalizedPhone = phone.trim()
+            val normalizedEmail = email.trim()
+
+            if (normalizedName.isBlank() || normalizedPhone.isBlank()) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("الاسم ورقم الهاتف مطلوبان")
+                )
+            }
+
+            val existing = dao.getUserByPhone(normalizedPhone)
             if (existing != null) {
                 return@withContext Result.failure(
                     IllegalArgumentException("يوجد حساب مسجل بهذا الرقم")
                 )
             }
+
             val userId = dao.insertUser(
                 UserEntity(
-                    name = name,
-                    phone = phone,
-                    email = email,
+                    name = normalizedName,
+                    phone = normalizedPhone,
+                    email = normalizedEmail,
                     role = role
                 )
             )
 
             val session = UserSession(
                 userId = userId,
-                name = name,
-                phone = phone,
-                email = email,
+                name = normalizedName,
+                phone = normalizedPhone,
+                email = normalizedEmail,
                 role = role,
                 associatedCustomerId = if (role == UserRole.CUSTOMER) userId else null
             )
@@ -91,25 +107,24 @@ class LocalAuthRepository(
         _authState.value = AuthState.Unauthenticated
     }
 
+    /**
+     * Kept for compatibility with the existing development UI, but it can no longer
+     * elevate or change an authenticated user's role. Production role must come from
+     * the persisted account/session.
+     */
     override suspend fun switchDevelopmentRole(role: UserRole): UserSession {
         val current = _currentSession.value
-        val updated = current?.copy(
-            role = role,
-            associatedCustomerId = if (role == UserRole.CUSTOMER) current.userId else current.associatedCustomerId
-        ) ?: UserSession(
-            userId = 1L,
-            name = "مستخدم التطوير",
-            phone = "01000000000",
-            role = role,
-            associatedCustomerId = if (role == UserRole.CUSTOMER) 1L else null
-        )
+            ?: throw IllegalStateException("لا توجد جلسة مستخدم نشطة")
 
-        _currentSession.value = updated
-        _authState.value = AuthState.Authenticated(updated)
-        return updated
+        if (current.role != role) {
+            return current
+        }
+
+        return current
     }
 
     override suspend fun restoreSession(): UserSession? {
+        // Persistent session restoration will be handled by the production auth layer.
         return _currentSession.value
     }
 }
