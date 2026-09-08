@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import com.example.BuildConfig
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.core.model.*
