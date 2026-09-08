@@ -594,13 +594,15 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             )
         )
 
-        // Keep sample customer-owned records attached to a real local user rather than an implicit ID.
+        // Sample records need a real owner, but this seed-only account must also satisfy
+        // the credential schema. These values are intentionally non-empty and are not
+        // presented as application login credentials.
         val sampleCustomerId = dao.insertUser(
             UserEntity(
                 name = "عمرو إبراهيم",
                 phone = "01011122233",
-                passwordHash = "",
-                passwordSalt = ""
+                passwordHash = "c15c1c1a2f31f8cda2ecbcb1b44d96f0f9f9f2d0a5d5c6e8c9a0b1d2e3f4a5b6",
+                passwordSalt = "seed-only-sample-account"
             )
         )
 
