@@ -26,7 +26,7 @@ import androidx.room.TypeConverters
         OrderReviewEntity::class,
         DriverPayoutRequestEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(FalsareeTypeConverters::class)
