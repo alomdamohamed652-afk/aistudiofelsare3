@@ -90,6 +90,12 @@ class LocalAuthRepository(
                     IllegalArgumentException("يوجد حساب مسجل بهذا الهاتف أو البريد الإلكتروني")
                 )
             }
+            if (role == UserRole.DRIVER) {
+                val driverProfile = dao.getDriverByPhone(normalizedPhone)
+                    ?: return@withContext Result.failure(
+                        IllegalStateException("رقم الهاتف غير مسجل لدى الإدارة كمندوب. تواصل مع الإدارة أولاً")
+                    )
+            }
             val salt = generateSalt()
             val userId = dao.insertUser(
                 UserEntity(
