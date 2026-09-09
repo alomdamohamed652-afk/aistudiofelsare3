@@ -51,7 +51,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val favoritePartnerIds: Flow<List<Long>> = dao.getFavoritePartnerIds()
     fun getFavoritePartnerIdsForCustomer(customerId: Long): Flow<List<Long>> = dao.getFavoritePartnerIdsForCustomer(customerId)
     val driverPayoutRequests: Flow<List<DriverPayoutRequestEntity>> = dao.getAllPayoutRequests()
-    val driverShiftAssignments: Flow<List<DriverShiftAssignmentEntity>> = dao.getActiveDriverShiftAssignments()
+    val driverShiftAssignments: Flow<List<DriverShiftAssignmentEntity>> = dao.getAllDriverShiftAssignments()
 
     /**
      * Hybrid dispatch foundation: the next eligible driver is selected by the
@@ -85,6 +85,18 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     suspend fun moveDriverInShift(driverId: Long, shiftName: String, queuePosition: Int) =
         assignDriverToShift(driverId, shiftName, queuePosition)
+
+    suspend fun reorderShift(shiftName: String, orderedDriverIds: List<Long>) = withContext(Dispatchers.IO) {
+        orderedDriverIds.distinct().forEachIndexed { index, driverId ->
+            assignDriverToShift(driverId, shiftName, index + 1)
+        }
+    }
+
+    suspend fun setDriverShiftActive(driverId: Long, active: Boolean) = withContext(Dispatchers.IO) {
+        dao.getDriverShiftAssignment(driverId)?.let { assignment ->
+            dao.updateDriverShiftAssignment(assignment.copy(active = active, updatedAt = System.currentTimeMillis()))
+        }
+    }
 
     suspend fun restoreDriverFromForcedBreak(driverId: Long) = withContext(Dispatchers.IO) {
         dao.getDriverShiftAssignment(driverId)?.let { assignment ->
