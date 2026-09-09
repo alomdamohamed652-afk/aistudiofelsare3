@@ -453,8 +453,13 @@ fun PartnerDetailScreen(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Quantity & Add to Cart Action
-                val totalProductPrice = ((prod.price + sizePriceOffset) * quantity)
+                // Quantity & Add to Cart Action.
+                // Size and selected add-ons are part of the actual line-item price.
+                val selectedAddonsPrice = selectedAddons.sumOf { selectedName ->
+                    addonOptions.firstOrNull { it.first == selectedName }?.second ?: 0.0
+                }
+                val configuredUnitPrice = prod.price + sizePriceOffset + selectedAddonsPrice
+                val totalProductPrice = configuredUnitPrice * quantity
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -493,12 +498,28 @@ fun PartnerDetailScreen(
                         text = "إضافة (${totalProductPrice.toInt()} ج.م) ⚡",
                         onClick = {
                             val optionsList = mutableListOf<String>()
-                            if (selectedSize.isNotEmpty()) optionsList.add("حجم: $selectedSize")
-                            if (selectedAddons.isNotEmpty()) optionsList.add("إضافات: ${selectedAddons.joinToString()}")
+                            if (selectedSize.isNotEmpty()) {
+                                val sizeLabel = if (sizePriceOffset > 0) {
+                                    "حجم: $selectedSize (+${sizePriceOffset.toInt()} ج.م)"
+                                } else {
+                                    "حجم: $selectedSize"
+                                }
+                                optionsList.add(sizeLabel)
+                            }
+                            if (selectedAddons.isNotEmpty()) {
+                                val addonsLabel = selectedAddons.joinToString("، ") { selectedName ->
+                                    val price = addonOptions.firstOrNull { it.first == selectedName }?.second ?: 0.0
+                                    if (price > 0) "$selectedName (+${price.toInt()} ج.م)" else selectedName
+                                }
+                                optionsList.add("إضافات: $addonsLabel")
+                            }
                             if (specialNotes.isNotBlank()) optionsList.add("ملاحظة: $specialNotes")
                             val optionsSummary = optionsList.joinToString(" • ")
 
-                            onAddToCart(prod, quantity, optionsSummary)
+                            // A configured copy lets the cart distinguish two variants
+                            // of the same product and keeps the charged unit price correct.
+                            val configuredProduct = prod.copy(price = configuredUnitPrice)
+                            onAddToCart(configuredProduct, quantity, optionsSummary)
                             productForSheet = null
                         },
                         modifier = Modifier.weight(1f).padding(start = 12.dp),
