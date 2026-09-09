@@ -287,6 +287,9 @@ fun FalsareeApp(
                                 onToggleOnboardingEnabled = { enabled ->
                                     coroutineScope.launch { viewModel.repository.setOnboardingEnabled(enabled) }
                                 },
+                                onSaveAppSettings = { settings ->
+                                    coroutineScope.launch { viewModel.repository.saveAppSettings(settings) }
+                                },
                                 onSwitchRole = { viewModel.switchRole(it) }
                             )
                         }
