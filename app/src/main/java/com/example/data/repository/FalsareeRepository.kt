@@ -109,11 +109,30 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         try {
             if (items.isEmpty()) return@withContext Result.failure(IllegalArgumentException("السلة فارغة"))
 
+            val currentPartner = dao.getPartnerById(partner.id)
+                ?: return@withContext Result.failure(IllegalStateException("المتجر غير متاح"))
+            if (!currentPartner.isOpen) {
+                return@withContext Result.failure(IllegalStateException("المتجر مغلق حاليًا"))
+            }
+
+            for (item in items) {
+                val currentProduct = dao.getProductById(item.productId)
+                    ?: return@withContext Result.failure(IllegalStateException("أحد الأصناف لم يعد متاحًا"))
+                if (currentProduct.partnerId != currentPartner.id) {
+                    return@withContext Result.failure(IllegalStateException("السلة تحتوي على صنف تابع لمتجر آخر"))
+                }
+                if (currentProduct.status != ProductStatus.AVAILABLE) {
+                    return@withContext Result.failure(
+                        IllegalStateException("الصنف ${item.productName} غير متاح حاليًا")
+                    )
+                }
+            }
+
             val subtotal = items.sumOf { it.totalPrice }
-            val total = (subtotal + partner.deliveryFee - appliedDiscount).coerceAtLeast(0.0)
+            val total = (subtotal + currentPartner.deliveryFee - appliedDiscount).coerceAtLeast(0.0)
             val orderNum = "#FS-${(1000..9999).random()}"
 
-            val initialOrderStatus = when (partner.approvalWorkflow) {
+            val initialOrderStatus = when (currentPartner.approvalWorkflow) {
                 ApprovalWorkflow.AUTOMATIC -> OrderStatus.APPROVED
                 else -> OrderStatus.PENDING_REVIEW
             }
@@ -129,9 +148,9 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 customerId = customerId,
                 customerName = customerName,
                 customerPhone = customerPhone,
-                partnerId = partner.id,
-                partnerName = partner.name,
-                partnerType = partner.type,
+                partnerId = currentPartner.id,
+                partnerName = currentPartner.name,
+                partnerType = currentPartner.type,
                 orderStatus = initialOrderStatus,
                 deliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER,
                 paymentMethod = paymentMethod,
@@ -139,7 +158,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 transferReceiptNote = transferReceiptNote,
                 deliveryAddress = deliveryAddress,
                 subtotal = subtotal,
-                deliveryFee = partner.deliveryFee,
+                deliveryFee = currentPartner.deliveryFee,
                 discount = appliedDiscount,
                 total = total,
                 customerNotes = customerNotes,
@@ -176,7 +195,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             )
 
             // Notify only the authenticated account linked to this partner.
-            dao.getUserByAssociatedPartnerId(partner.id)?.let { partnerUser ->
+            dao.getUserByAssociatedPartnerId(currentPartner.id)?.let { partnerUser ->
                 dao.insertNotification(
                     NotificationEntity(
                         targetUserId = partnerUser.id,
@@ -193,7 +212,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                     targetRole = UserRole.ADMIN,
                     category = NotificationCategory.ORDER,
                     title = "طلب جديد في النظام $orderNum",
-                    message = "تم إنشاء طلب جديد لدى ${partner.name}",
+                    message = "تم إنشاء طلب جديد لدى ${currentPartner.name}",
                     relatedOrderId = orderId
                 )
             )
