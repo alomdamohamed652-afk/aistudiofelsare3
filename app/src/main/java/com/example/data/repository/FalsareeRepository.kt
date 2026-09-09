@@ -128,6 +128,12 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     suspend fun timeoutDriverOffer(orderId: Long, driverId: Long, shiftName: String): Result<DriverProfileEntity> =
         withContext(Dispatchers.IO) {
             recordDriverDispatchEvent(orderId, driverId, "TIMEOUT", "انتهت مهلة قبول الطلب")
+            val settings = dao.getSettings().firstOrNull() ?: AppSettingsEntity()
+            val timeouts = dao.countDriverDispatchEvents(driverId, "TIMEOUT")
+            if (timeouts >= settings.maxTimeoutsBeforeBreak.coerceAtLeast(1)) {
+                putDriverOnForcedBreak(driverId, settings.automaticPenaltyBreakMinutes)
+                recordDriverDispatchEvent(orderId, driverId, "PENALTY_BREAK", "تجاوز حد التأخر في قبول الطلبات")
+            }
             offerOrderToNextDriver(orderId, shiftName)
         }
 
@@ -504,6 +510,12 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     suspend fun rejectDriverOffer(orderId: Long, driverId: Long, reason: String, shiftName: String): Result<DriverProfileEntity> =
         withContext(Dispatchers.IO) {
             recordDriverDispatchEvent(orderId, driverId, "REJECTED", reason)
+            val settings = dao.getSettings().firstOrNull() ?: AppSettingsEntity()
+            val rejects = dao.countDriverDispatchEvents(driverId, "REJECTED")
+            if (rejects >= settings.maxRejectsBeforeBreak.coerceAtLeast(1)) {
+                putDriverOnForcedBreak(driverId, settings.automaticPenaltyBreakMinutes)
+                recordDriverDispatchEvent(orderId, driverId, "PENALTY_BREAK", "تجاوز حد رفض الطلبات")
+            }
             offerOrderToNextDriver(orderId, shiftName)
         }
 
