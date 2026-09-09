@@ -70,7 +70,6 @@ fun FalsareeApp(
     val selectedPartner by viewModel.selectedPartner.collectAsStateWithLifecycle()
     val cartPartner by viewModel.cartPartner.collectAsStateWithLifecycle()
     val cartItems by viewModel.cartItems.collectAsStateWithLifecycle()
-    val cartOptions by viewModel.cartOptions.collectAsStateWithLifecycle()
     val appliedCoupon by viewModel.appliedCoupon.collectAsStateWithLifecycle()
     val discountAmount by viewModel.discountAmount.collectAsStateWithLifecycle()
     val trackedOrderId by viewModel.trackedOrderId.collectAsStateWithLifecycle()
@@ -171,7 +170,6 @@ fun FalsareeApp(
                                 products = products,
                                 cartPartner = cartPartner,
                                 cartItems = cartItems,
-                                cartOptions = cartOptions,
                                 appliedCoupon = appliedCoupon,
                                 discountAmount = discountAmount,
                                 addresses = addresses,
@@ -190,11 +188,11 @@ fun FalsareeApp(
                                 onCategorySelect = { viewModel.setCategoryFilter(it) },
                                 onlyOpenFilter = onlyOpenFilter,
                                 onToggleOnlyOpen = { viewModel.toggleOnlyOpenFilter() },
-                                onAddToCart = { partner, prod, qty, opts ->
-                                    viewModel.addToCart(partner, prod, qty, opts)
+                                onAddToCart = { partner, prod, qty, selection ->
+                                    viewModel.addToCart(partner, prod, qty, selection)
                                 },
-                                onUpdateCartQty = { prod, delta ->
-                                    viewModel.updateCartItemQuantity(prod, delta)
+                                onUpdateCartQty = { itemKey, delta ->
+                                    viewModel.updateCartItemQuantity(itemKey, delta)
                                 },
                                 onApplyCoupon = { viewModel.applyCoupon(it) },
                                 onClearCart = { viewModel.clearCart() },
@@ -558,8 +556,7 @@ fun CustomerPortalView(
     partners: List<com.example.data.local.PartnerEntity>,
     products: List<com.example.data.local.ProductEntity>,
     cartPartner: com.example.data.local.PartnerEntity?,
-    cartItems: Map<com.example.data.local.ProductEntity, Int>,
-    cartOptions: Map<Long, String>,
+    cartItems: List<com.example.core.model.CartItem>,
     appliedCoupon: com.example.data.local.CouponEntity?,
     discountAmount: Double,
     addresses: List<com.example.data.local.CustomerAddressEntity>,
@@ -572,8 +569,8 @@ fun CustomerPortalView(
     onCategorySelect: (com.example.core.model.PartnerType?) -> Unit,
     onlyOpenFilter: Boolean,
     onToggleOnlyOpen: () -> Unit,
-    onAddToCart: (partner: com.example.data.local.PartnerEntity, product: com.example.data.local.ProductEntity, quantity: Int, optionsSummary: String) -> Unit,
-    onUpdateCartQty: (product: com.example.data.local.ProductEntity, delta: Int) -> Unit,
+    onAddToCart: (partner: com.example.data.local.PartnerEntity, product: com.example.data.local.ProductEntity, quantity: Int, selection: com.example.core.model.CartSelection) -> Unit,
+    onUpdateCartQty: (itemKey: String, delta: Int) -> Unit,
     onApplyCoupon: (String) -> Unit,
     onClearCart: () -> Unit,
     onConfirmOrder: (address: String, notes: String, payment: com.example.core.model.PaymentMethod, receiptNote: String) -> Unit,
@@ -588,17 +585,16 @@ fun CustomerPortalView(
     onCreateTicket: (com.example.data.local.SupportTicketEntity) -> Unit,
     onSwitchRole: (UserRole) -> Unit
 ) {
-    val totalCartItemsCount = remember(cartItems) { cartItems.values.sum() }
+    val totalCartItemsCount = remember(cartItems) { cartItems.sumOf { it.quantity } }
 
     if (showCartScreen) {
         CartCheckoutScreen(
             partner = cartPartner,
             cartItems = cartItems,
-            cartOptions = cartOptions,
             appliedCoupon = appliedCoupon,
             discountAmount = discountAmount,
             addresses = addresses,
-            onUpdateQuantity = onUpdateCartQty,
+            onUpdateQuantity = { item, delta -> onUpdateCartQty(item.key, delta) },
             onApplyCoupon = onApplyCoupon,
             onConfirmOrder = onConfirmOrder,
             onBack = { onToggleCart(false) },
@@ -612,8 +608,8 @@ fun CustomerPortalView(
             partner = selectedPartner,
             products = partnerProducts,
             onBack = { onSelectPartner(null) },
-            onAddToCart = { prod, qty, opts ->
-                onAddToCart(selectedPartner, prod, qty, opts)
+            onAddToCart = { prod, qty, selection ->
+                onAddToCart(selectedPartner, prod, qty, selection)
             },
             onViewCart = { onToggleCart(true) },
             cartItemCount = totalCartItemsCount
