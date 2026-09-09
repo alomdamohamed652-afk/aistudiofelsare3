@@ -58,6 +58,7 @@ fun FalsareeApp(
     val addresses by viewModel.customerAddresses.collectAsStateWithLifecycle()
     val tickets by viewModel.customerTickets.collectAsStateWithLifecycle()
     val activeDriverOfferEvents by viewModel.activeDriverOfferEvents.collectAsStateWithLifecycle()
+    val driverPerformance by viewModel.driverPerformance.collectAsStateWithLifecycle()
     val activityLogs by viewModel.repository.recentActivityLogs.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val notifications by remember(currentSession, currentRole) {
@@ -350,6 +351,7 @@ fun FalsareeApp(
                                 offerExpiryByOrderId = activeDriverOfferEvents
                                     .groupBy { it.orderId }
                                     .mapValues { (_, events) -> events.maxOf { it.expiresAt } },
+                                driverPerformance = driverPerformance,
                                 onOfferTimeout = { ord ->
                                     activeDriver?.let { driver ->
                                         val shift = driverShiftAssignments
