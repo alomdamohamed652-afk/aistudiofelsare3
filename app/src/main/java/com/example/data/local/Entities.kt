@@ -209,7 +209,12 @@ data class AppSettingsEntity(
     val onboardingEnabled: Boolean = true,
     val defaultApproval: ApprovalWorkflow = ApprovalWorkflow.PARTNER,
     val defaultDispatchMode: DispatchMode = DispatchMode.OPEN_DISPATCH,
-    val dispatchTriggerTiming: String = "عند بدء التجهيز"
+    val dispatchTriggerTiming: String = "عند بدء التجهيز",
+    val baseDeliveryFee: Double = 0.0,
+    val minimumOrderAmount: Double = 0.0,
+    val includedDistanceKm: Double = 0.0,
+    val pricePerAdditionalKm: Double = 0.0,
+    val additionalPickupFee: Double = 0.0
 )
 
 @Entity(tableName = "favorite_partners")
