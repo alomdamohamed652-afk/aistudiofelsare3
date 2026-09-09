@@ -99,13 +99,13 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         customerName: String,
         customerPhone: String,
         partner: PartnerEntity,
-        items: List<Pair<ProductEntity, Int>>, // product to quantity
-        optionsNotes: String,
+        items: List<Triple<ProductEntity, Int, String>>, // product, quantity, selected options
         deliveryAddress: String,
         customerNotes: String,
         paymentMethod: PaymentMethod,
         appliedDiscount: Double = 0.0,
-        transferReceiptNote: String = ""
+        transferReceiptNote: String = "",
+        transferReceiptUri: String = ""
     ): Result<Long> = withContext(Dispatchers.IO) {
         try {
             if (items.isEmpty()) return@withContext Result.failure(IllegalArgumentException("السلة فارغة"))
@@ -138,6 +138,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 paymentMethod = paymentMethod,
                 paymentStatus = paymentStatus,
                 transferReceiptNote = transferReceiptNote,
+                transferReceiptUri = transferReceiptUri,
                 deliveryAddress = deliveryAddress,
                 subtotal = subtotal,
                 deliveryFee = partner.deliveryFee,
@@ -149,14 +150,14 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
             val orderId = dao.insertOrder(order)
 
-            val orderItems = items.map { (prod, qty) ->
+            val orderItems = items.map { (prod, qty, optionsSummary) ->
                 OrderItemEntity(
                     orderId = orderId,
                     productId = prod.id,
                     productName = prod.name,
                     quantity = qty,
                     unitPrice = prod.price,
-                    optionsSummary = optionsNotes,
+                    optionsSummary = optionsSummary,
                     totalPrice = prod.price * qty
                 )
             }
