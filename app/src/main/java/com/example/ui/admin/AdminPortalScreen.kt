@@ -45,6 +45,8 @@ fun AdminPortalScreen(
     onAddDriver: (DriverProfileEntity) -> Unit,
     onUpdateDriver: (DriverProfileEntity) -> Unit,
     onDeleteDriver: (DriverProfileEntity) -> Unit,
+    onForcedBreak: (Long, Int) -> Unit,
+    onRestoreDriver: (Long) -> Unit,
     onSetAccountActivation: (userId: Long, active: Boolean, reason: String) -> Unit,
     onSaveHomeSection: (HomeSectionEntity) -> Unit,
     onDeleteHomeSection: (HomeSectionEntity) -> Unit,
@@ -188,6 +190,8 @@ fun AdminPortalScreen(
                     onAddDriver = onAddDriver,
                     onUpdateDriver = onUpdateDriver,
                     onDeleteDriver = onDeleteDriver,
+                    onForcedBreak = { id, minutes -> onForcedBreak(id, minutes) },
+                    onRestoreDriver = { id -> onRestoreDriver(id) },
                     driverAccounts = driverAccounts,
                     onSetAccountActivation = onSetAccountActivation
                 )
