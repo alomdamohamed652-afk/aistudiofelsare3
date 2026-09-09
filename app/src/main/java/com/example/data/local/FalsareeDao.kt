@@ -341,6 +341,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM driver_performance WHERE driverId = :driverId LIMIT 1")
     suspend fun getDriverPerformance(driverId: Long): DriverPerformanceEntity?
 
+    @Query("SELECT * FROM driver_performance WHERE driverId = :driverId LIMIT 1")
+    fun observeDriverPerformance(driverId: Long): Flow<DriverPerformanceEntity?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDriverPerformance(performance: DriverPerformanceEntity)
 
