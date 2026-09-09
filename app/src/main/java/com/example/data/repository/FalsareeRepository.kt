@@ -1011,8 +1011,16 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         if (status !in setOf(DriverStatus.OFFLINE, DriverStatus.AVAILABLE)) {
             return@withContext Result.failure(IllegalArgumentException("لا يمكن تغيير حالة العمل إلى هذه الحالة يدويًا"))
         }
-        if (driver.status == DriverStatus.BUSY && status == DriverStatus.OFFLINE) {
-            return@withContext Result.failure(IllegalStateException("لا يمكن فصل المندوب أثناء وجود طلب نشط"))
+        val assignment = dao.getDriverShiftAssignment(driverId)
+        val now = System.currentTimeMillis()
+        if (assignment?.forcedBreakUntil ?: 0L > now) {
+            return@withContext Result.failure(IllegalStateException("المندوب في استراحة إجبارية"))
+        }
+        if (driver.status == DriverStatus.BREAK) {
+            return@withContext Result.failure(IllegalStateException("لا يمكن تغيير الحالة أثناء الاستراحة"))
+        }
+        if (driver.status == DriverStatus.BUSY) {
+            return@withContext Result.failure(IllegalStateException("لا يمكن تغيير الحالة أثناء وجود طلب نشط"))
         }
         dao.updateDriver(driver.copy(status = status))
         Result.success(Unit)
