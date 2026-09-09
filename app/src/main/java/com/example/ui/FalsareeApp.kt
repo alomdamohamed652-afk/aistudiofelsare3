@@ -715,6 +715,8 @@ fun CustomerPortalView(
                         addresses = addresses,
                         coupons = coupons,
                         tickets = tickets,
+                        currentSession = currentSession,
+                        onLogout = viewModel::logout,
                         onAddAddress = onAddAddress,
                         onDeleteAddress = onDeleteAddress,
                         onCreateTicket = onCreateTicket,
