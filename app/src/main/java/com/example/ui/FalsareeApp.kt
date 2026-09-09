@@ -438,6 +438,9 @@ fun FalsareeApp(
                                 onSaveProduct = { prod ->
                                     coroutineScope.launch { viewModel.repository.saveProduct(prod) }
                                 },
+                                onDeleteProduct = { prod ->
+                                    coroutineScope.launch { viewModel.repository.deleteProduct(prod) }
+                                },
                                 onUpdateProductStatus = { id, st ->
                                     coroutineScope.launch { viewModel.repository.updateProductStatus(id, st) }
                                 },
