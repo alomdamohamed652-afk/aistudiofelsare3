@@ -35,6 +35,8 @@ fun DriverPortalScreen(
     driver: DriverProfileEntity?,
     activeOrder: OrderEntity?,
     openOrders: List<OrderEntity>,
+    offerExpiryByOrderId: Map<Long, Long> = emptyMap(),
+    onOfferTimeout: (OrderEntity) -> Unit = {},
     driverOrders: List<OrderEntity> = emptyList(),
     payoutRequests: List<DriverPayoutRequestEntity> = emptyList(),
     shiftAssignment: DriverShiftAssignmentEntity? = null,
