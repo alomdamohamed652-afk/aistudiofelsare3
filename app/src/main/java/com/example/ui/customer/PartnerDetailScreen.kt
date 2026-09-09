@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -135,7 +137,8 @@ fun PartnerDetailScreen(
                                     .background(BrandPrimary.copy(alpha = 0.1f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(text = partner.logoEmoji, fontSize = 32.sp)
+                                if (partner.imageUrl.isNotBlank()) AsyncImage(model = partner.imageUrl, contentDescription = partner.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                else Text(text = partner.logoEmoji, fontSize = 32.sp)
                             }
                             Spacer(modifier = Modifier.width(14.dp))
                             Column {
@@ -269,7 +272,8 @@ fun PartnerDetailScreen(
                                     .background(SurfaceBackground),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(text = prod.imageEmoji, fontSize = 32.sp)
+                                if (prod.imageUrl.isNotBlank()) AsyncImage(model = prod.imageUrl, contentDescription = prod.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                else Text(text = prod.imageEmoji, fontSize = 32.sp)
                             }
 
                             Spacer(modifier = Modifier.width(14.dp))
@@ -363,7 +367,9 @@ fun PartnerDetailScreen(
                     .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = prod.imageEmoji, fontSize = 40.sp)
+                    if (prod.imageUrl.isNotBlank()) {
+                        AsyncImage(model = prod.imageUrl, contentDescription = prod.name, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
+                    } else Text(text = prod.imageEmoji, fontSize = 40.sp)
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
