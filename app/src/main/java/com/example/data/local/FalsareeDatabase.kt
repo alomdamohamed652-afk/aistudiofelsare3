@@ -26,9 +26,10 @@ import androidx.room.TypeConverters
         OrderReviewEntity::class,
         DriverPayoutRequestEntity::class,
         DriverShiftAssignmentEntity::class,
-        DriverDispatchEventEntity::class
+        DriverDispatchEventEntity::class,
+        DriverPerformanceEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(FalsareeTypeConverters::class)
