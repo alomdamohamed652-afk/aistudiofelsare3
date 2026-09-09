@@ -47,6 +47,9 @@ fun AdminPortalScreen(
     onDeleteDriver: (DriverProfileEntity) -> Unit,
     onForcedBreak: (Long, Int) -> Unit,
     onRestoreDriver: (Long) -> Unit,
+    shiftAssignments: List<DriverShiftAssignmentEntity>,
+    onAssignShift: (Long, String, Int) -> Unit,
+    onSetShiftActive: (Long, Boolean) -> Unit,
     onSetAccountActivation: (userId: Long, active: Boolean, reason: String) -> Unit,
     onSaveHomeSection: (HomeSectionEntity) -> Unit,
     onDeleteHomeSection: (HomeSectionEntity) -> Unit,
@@ -192,6 +195,9 @@ fun AdminPortalScreen(
                     onDeleteDriver = onDeleteDriver,
                     onForcedBreak = { id, minutes -> onForcedBreak(id, minutes) },
                     onRestoreDriver = { id -> onRestoreDriver(id) },
+                    shiftAssignments = shiftAssignments,
+                    onAssignShift = { id, shift, position -> onAssignShift(id, shift, position) },
+                    onSetShiftActive = { id, active -> onSetShiftActive(id, active) },
                     driverAccounts = driverAccounts,
                     onSetAccountActivation = onSetAccountActivation
                 )
