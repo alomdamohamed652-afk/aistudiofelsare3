@@ -37,6 +37,7 @@ fun DriverPortalScreen(
     openOrders: List<OrderEntity>,
     offerExpiryByOrderId: Map<Long, Long> = emptyMap(),
     onOfferTimeout: (OrderEntity) -> Unit = {},
+    driverPerformance: com.example.data.local.DriverPerformanceEntity? = null,
     driverOrders: List<OrderEntity> = emptyList(),
     payoutRequests: List<DriverPayoutRequestEntity> = emptyList(),
     shiftAssignment: DriverShiftAssignmentEntity? = null,
@@ -244,7 +245,8 @@ fun DriverPortalScreen(
                     onAcceptOrder = onAcceptOrder,
                     onRejectOrder = onRejectOrder,
                     onConfirmPickup = onConfirmPickup,
-                    onConfirmDelivered = onConfirmDelivered
+                    onConfirmDelivered = onConfirmDelivered,
+                    driverPerformance = driverPerformance
                 )
                 1 -> DriverOrdersHistoryScreen(
                     activeOrder = activeOrder,
@@ -276,7 +278,8 @@ fun DriverHomeScreen(
     onAcceptOrder: (OrderEntity) -> Unit,
     onRejectOrder: (OrderEntity, String) -> Unit,
     onConfirmPickup: (OrderEntity) -> Unit,
-    onConfirmDelivered: (OrderEntity) -> Unit
+    onConfirmDelivered: (OrderEntity) -> Unit,
+    driverPerformance: com.example.data.local.DriverPerformanceEntity? = null
 ) {
     var rejectOrder by remember { mutableStateOf<OrderEntity?>(null) }
     val now by produceState(initialValue = System.currentTimeMillis()) {
@@ -333,6 +336,16 @@ fun DriverHomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        item {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("ملخص الأداء", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("تم القبول: ${driverPerformance?.totalAccepted ?: 0} • تم الرفض: ${driverPerformance?.totalRejected ?: 0}")
+                    Text("انتهت المهلة: ${driverPerformance?.totalTimeouts ?: 0}")
+                    Text("رفضات متتالية: ${driverPerformance?.consecutiveRejects ?: 0} • مهلات متتالية: ${driverPerformance?.consecutiveTimeouts ?: 0}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                }
+            }
+        }
         // Active Order Card (If driver has an ongoing task)
         if (activeOrder != null) {
             item {
