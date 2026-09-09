@@ -52,6 +52,19 @@ interface FalsareeDao {
     @Update
     suspend fun updatePartner(partner: PartnerEntity)
 
+    // --- Partner Categories ---
+    @Query("SELECT * FROM partner_categories WHERE partnerId = :partnerId ORDER BY sortOrder ASC, id ASC")
+    fun getCategoriesForPartner(partnerId: Long): Flow<List<PartnerCategoryEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategory(category: PartnerCategoryEntity): Long
+
+    @Update
+    suspend fun updateCategory(category: PartnerCategoryEntity)
+
+    @Delete
+    suspend fun deleteCategory(category: PartnerCategoryEntity)
+
     // --- Products ---
     @Query("SELECT * FROM products WHERE partnerId = :partnerId")
     fun getProductsForPartner(partnerId: Long): Flow<List<ProductEntity>>
