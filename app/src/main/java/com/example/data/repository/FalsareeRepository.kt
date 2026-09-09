@@ -488,7 +488,17 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         if (order.driverId != null && order.driverId != driverId)
             return@withContext Result.failure(IllegalStateException("تم قبول الطلب بواسطة مندوب آخر"))
         recordDriverDispatchEvent(orderId, driverId, "ACCEPTED")
-        assignDriverToOrder(orderId, driver, driver.name, "DRIVER")
+        assignDriverToOrder(orderId, driver, driver.name, "DRIVER").also { result ->
+            if (result.isSuccess) {
+                dao.getDriverShiftAssignment(driverId)?.let { assignment ->
+                    val nextPosition = assignment.queuePosition + 1
+                    dao.updateDriverShiftAssignment(
+                        assignment.copy(queuePosition = nextPosition, updatedAt = System.currentTimeMillis())
+                    )
+                    recordDriverDispatchEvent(orderId, driverId, "QUEUE_ROTATED", "انتقل المندوب إلى نهاية الدور")
+                }
+            }
+        }
     }
 
     suspend fun rejectDriverOffer(orderId: Long, driverId: Long, reason: String, shiftName: String): Result<DriverProfileEntity> =
