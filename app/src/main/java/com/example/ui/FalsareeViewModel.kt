@@ -90,12 +90,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     val driverPayoutRequests: StateFlow<List<com.example.data.local.DriverPayoutRequestEntity>> = currentSession
         .flatMapLatest { session -> session?.associatedDriverId?.let(repository::getDriverPayoutRequests) ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
- fix/identity-hardening
-    // Active Partner ID is available only when the authenticated session is linked to a partner.
-
-    // Active partner identity must come from the authenticated session.
- main
+    // Active partner identity is derived from the authenticated session.
     private val _activePartnerId = MutableStateFlow<Long?>(null)
     val activePartnerId: StateFlow<Long?> = _activePartnerId.asStateFlow()
 
@@ -155,17 +150,12 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             runCatching { authRepository.switchDevelopmentRole(role) }
- fix/identity-hardening
-                .onFailure {
-                    _alertMessage.value = it.message ?: "تعذر تبديل الدور"
-
                 .onSuccess { updatedSession ->
                     _activeDriverId.value = updatedSession.associatedDriverId
                     _activePartnerId.value = updatedSession.associatedPartnerId
                 }
                 .onFailure { error ->
                     _alertMessage.value = error.message ?: "تعذر تبديل الدور"
- main
                 }
         }
     }
@@ -194,17 +184,11 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setActivePartnerId(id: Long) {
- fix/identity-hardening
         if (!BuildConfig.DEBUG) {
             _alertMessage.value = "لا يمكن تغيير هوية الشريك خارج وضع الاختبار"
             return
         }
         _activePartnerId.value = id
-
-        if (BuildConfig.DEBUG) {
-            _activePartnerId.value = id
-        }
- main
     }
 
     fun login(identifier: String, password: String) {
