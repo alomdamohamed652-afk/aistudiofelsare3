@@ -198,12 +198,13 @@ fun FalsareeApp(
                                 },
                                 onApplyCoupon = { viewModel.applyCoupon(it) },
                                 onClearCart = { viewModel.clearCart() },
-                                onConfirmOrder = { addr, notes, pay, receipt ->
+                                onConfirmOrder = { addr, notes, pay, receiptNote, receiptUri ->
                                     viewModel.placeOrder(
                                         deliveryAddress = addr,
                                         customerNotes = notes,
                                         paymentMethod = pay,
-                                        transferReceiptNote = receipt
+                                        transferReceiptNote = receiptNote,
+                                        transferReceiptUri = receiptUri
                                     )
                                     showCartScreen = false
                                 },
@@ -565,7 +566,7 @@ fun CustomerPortalView(
     products: List<com.example.data.local.ProductEntity>,
     cartPartner: com.example.data.local.PartnerEntity?,
     cartItems: Map<com.example.data.local.ProductEntity, Int>,
-    cartOptions: Map<Long, String>,
+    cartOptions: Map<com.example.data.local.ProductEntity, String>,
     appliedCoupon: com.example.data.local.CouponEntity?,
     discountAmount: Double,
     addresses: List<com.example.data.local.CustomerAddressEntity>,
