@@ -209,7 +209,10 @@ data class AppSettingsEntity(
     val extraPickupFee: Double = 10.0,
     val freeDeliveryThreshold: Double = 0.0,
     val driverOfferTimeoutSeconds: Int = 30,
-    val busyDriversOpenDispatch: Boolean = true
+    val busyDriversOpenDispatch: Boolean = true,
+    val maxRejectsBeforeBreak: Int = 3,
+    val maxTimeoutsBeforeBreak: Int = 3,
+    val automaticPenaltyBreakMinutes: Int = 30
 )
 
 @Entity(tableName = "favorite_partners")
