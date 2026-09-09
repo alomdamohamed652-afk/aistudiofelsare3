@@ -90,6 +90,21 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         .flatMapLatest { session -> session?.associatedDriverId?.let(repository::getDriverPayoutRequests) ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val activeDriverOfferEvents: StateFlow<List<DriverDispatchEventEntity>> = currentSession
+        .flatMapLatest { session ->
+            session?.associatedDriverId?.let { driverId ->
+                repository.activeDriverOfferEvents(driverId)
+            } ?: flowOf(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val driverShiftAssignments: StateFlow<List<DriverShiftAssignmentEntity>> =
+        repository.driverShiftAssignments.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            emptyList()
+        )
+
     // Active partner identity is derived from the authenticated session.
     private val _activePartnerId = MutableStateFlow<Long?>(null)
     val activePartnerId: StateFlow<Long?> = _activePartnerId.asStateFlow()
