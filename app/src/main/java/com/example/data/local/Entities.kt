@@ -15,6 +15,9 @@ data class UserEntity(
     val role: UserRole = UserRole.CUSTOMER,
     val associatedDriverId: Long? = null,
     val associatedPartnerId: Long? = null,
+    val isActive: Boolean = true,
+    val activationStatus: String = "ACTIVE",
+    val activationReason: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
 
