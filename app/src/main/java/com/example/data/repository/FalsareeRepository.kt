@@ -522,6 +522,27 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         dao.deleteHomeSection(section)
     }
 
+    // --- Admin CRUD Operations ---
+    suspend fun savePartner(partner: PartnerEntity) = withContext(Dispatchers.IO) {
+        if (partner.id == 0L) dao.insertPartner(partner) else dao.updatePartner(partner)
+    }
+
+    suspend fun deletePartner(partner: PartnerEntity) = withContext(Dispatchers.IO) {
+        dao.deletePartner(partner)
+    }
+
+    suspend fun deleteProduct(product: ProductEntity) = withContext(Dispatchers.IO) {
+        dao.deleteProduct(product)
+    }
+
+    suspend fun saveDriver(driver: DriverProfileEntity) = withContext(Dispatchers.IO) {
+        if (driver.id == 0L) dao.insertDriver(driver) else dao.updateDriver(driver)
+    }
+
+    suspend fun deleteDriver(driver: DriverProfileEntity) = withContext(Dispatchers.IO) {
+        dao.deleteDriver(driver)
+    }
+
     // --- Partner & Product Operations ---
     suspend fun setPartnerOpenStatus(partnerId: Long, isOpen: Boolean) = withContext(Dispatchers.IO) {
         val partner = dao.getPartnerById(partnerId) ?: return@withContext
