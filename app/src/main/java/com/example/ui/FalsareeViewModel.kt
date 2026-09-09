@@ -4,7 +4,6 @@ import android.app.Application
 import com.example.BuildConfig
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.BuildConfig
 import com.example.core.model.*
 import com.example.data.local.*
 import com.example.data.repository.FalsareeRepository
