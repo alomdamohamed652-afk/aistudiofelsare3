@@ -133,6 +133,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 return@withContext Result.failure(IllegalStateException("مهلة العرض لم تنته بعد"))
             }
             recordDriverDispatchEvent(orderId, driverId, "TIMEOUT", "انتهت مهلة قبول الطلب")
+            updateDriverPerformance(driverId, "TIMEOUT")
+            applyAutomaticPenaltyIfNeeded(orderId, driverId)
             offerOrderToNextDriver(orderId, shiftName)
         }
 
@@ -481,6 +483,68 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             Result.success(driver)
         }
 
+    private suspend fun rotateQueueAfterAcceptance(shiftName: String, acceptedDriverId: Long) {
+        val queue = dao.getActiveDriverShiftAssignmentsSnapshot(shiftName)
+        val accepted = queue.firstOrNull { it.driverId == acceptedDriverId } ?: return
+        val rotated = queue.filter { it.driverId != acceptedDriverId } + accepted
+        val now = System.currentTimeMillis()
+        rotated.forEachIndexed { index, item ->
+            dao.updateDriverShiftAssignment(item.copy(queuePosition = index + 1, updatedAt = now))
+        }
+    }
+
+    private suspend fun updateDriverPerformance(driverId: Long, eventType: String) {
+        val current = dao.getDriverPerformance(driverId) ?: DriverPerformanceEntity(driverId = driverId)
+        val next = when (eventType) {
+            "ACCEPTED" -> current.copy(
+                totalAccepted = current.totalAccepted + 1,
+                consecutiveRejects = 0,
+                consecutiveTimeouts = 0,
+                updatedAt = System.currentTimeMillis()
+            )
+            "REJECTED" -> current.copy(
+                totalRejected = current.totalRejected + 1,
+                consecutiveRejects = current.consecutiveRejects + 1,
+                consecutiveTimeouts = 0,
+                updatedAt = System.currentTimeMillis()
+            )
+            "TIMEOUT" -> current.copy(
+                totalTimeouts = current.totalTimeouts + 1,
+                consecutiveTimeouts = current.consecutiveTimeouts + 1,
+                consecutiveRejects = 0,
+                updatedAt = System.currentTimeMillis()
+            )
+            else -> current
+        }
+        dao.upsertDriverPerformance(next)
+    }
+
+    private suspend fun applyAutomaticPenaltyIfNeeded(orderId: Long, driverId: Long) {
+        val settings = dao.getSettings().firstOrNull() ?: AppSettingsEntity()
+        val performance = dao.getDriverPerformance(driverId) ?: return
+        val rejectLimit = settings.maxRejectsBeforeBreak.coerceAtLeast(1)
+        val timeoutLimit = settings.maxTimeoutsBeforeBreak.coerceAtLeast(1)
+        val exceededRejects = performance.consecutiveRejects >= rejectLimit
+        val exceededTimeouts = performance.consecutiveTimeouts >= timeoutLimit
+        if (!exceededRejects && !exceededTimeouts) return
+
+        putDriverOnForcedBreak(driverId, settings.automaticPenaltyBreakMinutes)
+        val reason = if (exceededRejects) {
+            "تجاوز حد الرفضات المتتالية"
+        } else {
+            "تجاوز حد انتهاء مهلة العروض المتتالية"
+        }
+        dao.upsertDriverPerformance(
+            performance.copy(
+                consecutiveRejects = 0,
+                consecutiveTimeouts = 0,
+                lastPenaltyAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+        recordDriverDispatchEvent(orderId, driverId, "PENALTY_BREAK", reason)
+    }
+
     private suspend fun isDriverEligibleForDispatch(
         driverId: Long,
         shiftName: String,
@@ -540,12 +604,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
         dao.updateDriver(driver.copy(status = DriverStatus.BUSY, currentOrderId = orderId))
         recordDriverDispatchEvent(orderId, driverId, "ACCEPTED")
-
-        val sameShift = dao.getActiveDriverShiftAssignmentsSnapshot(assignment.shiftName)
-        val maxPosition = sameShift.maxOfOrNull { it.queuePosition } ?: assignment.queuePosition
-        dao.updateDriverShiftAssignment(
-            assignment.copy(queuePosition = maxPosition + 1, updatedAt = System.currentTimeMillis())
-        )
+        updateDriverPerformance(driverId, "ACCEPTED")
+        rotateQueueAfterAcceptance(assignment.shiftName, driverId)
         recordDriverDispatchEvent(orderId, driverId, "QUEUE_ROTATED", "انتقل المندوب إلى نهاية الدور")
 
         dao.insertActivityLog(
@@ -572,6 +632,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 return@withContext Result.failure(IllegalStateException("المندوب غير مؤهل للتعامل مع العرض"))
             }
             recordDriverDispatchEvent(orderId, driverId, "REJECTED", reason)
+            updateDriverPerformance(driverId, "REJECTED")
+            applyAutomaticPenaltyIfNeeded(orderId, driverId)
             offerOrderToNextDriver(orderId, shiftName)
         }
 
