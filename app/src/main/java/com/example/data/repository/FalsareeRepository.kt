@@ -497,7 +497,10 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         assignDriverToOrder(orderId, driver, driver.name, "DRIVER").also { result ->
             if (result.isSuccess) {
                 dao.getDriverShiftAssignment(driverId)?.let { assignment ->
-                    val nextPosition = assignment.queuePosition + 1
+                    val sameShift = dao.getActiveDriverShiftAssignments().firstOrNull()
+                        .orEmpty()
+                        .filter { it.shiftName == assignment.shiftName }
+                    val nextPosition = (sameShift.maxOfOrNull { it.queuePosition } ?: 0) + 1
                     dao.updateDriverShiftAssignment(
                         assignment.copy(queuePosition = nextPosition, updatedAt = System.currentTimeMillis())
                     )
