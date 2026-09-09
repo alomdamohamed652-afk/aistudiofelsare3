@@ -127,10 +127,21 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     suspend fun timeoutDriverOffer(orderId: Long, driverId: Long, shiftName: String): Result<DriverProfileEntity> =
         withContext(Dispatchers.IO) {
-            val offerValidation = validateActiveOffer(orderId, driverId)
-            if (offerValidation.isFailure) return@withContext Result.failure(offerValidation.exceptionOrNull()!!)
-            if (System.currentTimeMillis() <= offerValidation.getOrThrow().expiresAt) {
+            val order = dao.getOrderById(orderId)
+                ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+            if (order.driverId != null) {
+                return@withContext Result.failure(IllegalStateException("الطلب تم تعيينه بالفعل"))
+            }
+            val offer = dao.getLatestDriverOffer(orderId, driverId)
+                ?: return@withContext Result.failure(IllegalStateException("لا يوجد عرض لهذا المندوب"))
+            if (offer.expiresAt <= 0L || System.currentTimeMillis() <= offer.expiresAt) {
                 return@withContext Result.failure(IllegalStateException("مهلة العرض لم تنته بعد"))
+            }
+            if (offer.eventType == "OFFERED") {
+                val latest = dao.getLatestOrderOffer(orderId)
+                if (latest?.id != offer.id) {
+                    return@withContext Result.failure(IllegalStateException("تم تجاوز العرض بعرض أحدث"))
+                }
             }
             recordDriverDispatchEvent(orderId, driverId, "TIMEOUT", "انتهت مهلة قبول الطلب")
             updateDriverPerformance(driverId, "TIMEOUT")
