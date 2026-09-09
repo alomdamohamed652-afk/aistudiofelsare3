@@ -43,6 +43,9 @@ interface FalsareeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPartner(partner: PartnerEntity): Long
 
+    @Delete
+    suspend fun deletePartner(partner: PartnerEntity)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPartners(partners: List<PartnerEntity>)
 
@@ -67,6 +70,9 @@ interface FalsareeDao {
 
     @Update
     suspend fun updateProduct(product: ProductEntity)
+
+    @Delete
+    suspend fun deleteProduct(product: ProductEntity)
 
     // --- Orders ---
     @Query("SELECT * FROM orders ORDER BY createdAt DESC")
@@ -173,6 +179,12 @@ interface FalsareeDao {
 
     @Update
     suspend fun updateDriver(driver: DriverProfileEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDriver(driver: DriverProfileEntity): Long
+
+    @Delete
+    suspend fun deleteDriver(driver: DriverProfileEntity)
 
     // --- Support Tickets ---
     @Query("SELECT * FROM support_tickets ORDER BY createdAt DESC")
