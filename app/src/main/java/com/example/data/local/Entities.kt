@@ -68,6 +68,9 @@ data class OrderEntity(
     val paymentMethod: PaymentMethod = PaymentMethod.CASH_ON_DELIVERY,
     val paymentStatus: PaymentStatus = PaymentStatus.PENDING,
     val transferReceiptNote: String = "",
+    // Local URI for the transfer proof image. A remote backend can replace this
+    // with a secure storage URL without changing the order flow.
+    val transferReceiptUri: String = "",
     val deliveryAddress: String,
     val subtotal: Double,
     val deliveryFee: Double,
