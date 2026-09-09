@@ -39,6 +39,16 @@ data class PartnerEntity(
     val activeOrdersCount: Int = 0
 )
 
+@Entity(tableName = "partner_categories")
+data class PartnerCategoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val partnerId: Long,
+    val name: String,
+    val imageUrl: String = "",
+    val sortOrder: Int = 0,
+    val active: Boolean = true
+)
+
 @Entity(tableName = "products")
 data class ProductEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
