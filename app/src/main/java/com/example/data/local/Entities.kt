@@ -258,6 +258,7 @@ data class DriverShiftAssignmentEntity(
     val queuePosition: Int,
     val active: Boolean = true,
     val forcedBreakUntil: Long = 0L,
+    val statusBeforeBreak: DriverStatus? = null,
     val updatedAt: Long = System.currentTimeMillis()
 )
 
