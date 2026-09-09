@@ -319,19 +319,25 @@ fun PartnerDetailScreen(
     // Product Options Bottom Sheet
     if (productForSheet != null) {
         val prod = productForSheet!!
-        var quantity by remember { mutableIntStateOf(1) }
-        var selectedSize by remember { mutableStateOf("عادي") }
-        var sizePriceOffset by remember { mutableDoubleStateOf(0.0) }
-        val selectedAddons = remember { mutableStateListOf<String>() }
-        var specialNotes by remember { mutableStateOf("") }
 
-        // Parse sizes
+        // Parse sizes before initializing the selection so the first valid size
+        // is always the default instead of an artificial "عادي" value.
         val sizeOptions = remember(prod) {
             prod.sizesString.split(",").mapNotNull {
                 val parts = it.split(":")
                 if (parts.size == 2) Pair(parts[0], parts[1].toDoubleOrNull() ?: 0.0) else null
             }
         }
+
+        var quantity by remember(prod.id) { mutableIntStateOf(1) }
+        var selectedSize by remember(prod.id, sizeOptions) {
+            mutableStateOf(sizeOptions.firstOrNull()?.first.orEmpty())
+        }
+        var sizePriceOffset by remember(prod.id, sizeOptions) {
+            mutableDoubleStateOf(sizeOptions.firstOrNull()?.second ?: 0.0)
+        }
+        val selectedAddons = remember(prod.id) { mutableStateListOf<String>() }
+        var specialNotes by remember(prod.id) { mutableStateOf("") }
 
         // Parse addons
         val addonOptions = remember(prod) {
