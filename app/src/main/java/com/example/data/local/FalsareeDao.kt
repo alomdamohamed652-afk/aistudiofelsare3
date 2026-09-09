@@ -27,6 +27,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM users WHERE associatedPartnerId = :partnerId LIMIT 1")
     suspend fun getUserByAssociatedPartnerId(partnerId: Long): UserEntity?
 
+    @Query("SELECT * FROM users WHERE role = 'DRIVER' ORDER BY createdAt DESC")
+    fun getAllDriverUsers(): Flow<List<UserEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUser(user: UserEntity): Long
 
