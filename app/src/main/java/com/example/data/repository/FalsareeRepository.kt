@@ -16,6 +16,9 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     private class NoEligibleDriverException(message: String) : IllegalStateException(message)
 
+    private fun isActiveDriverAccount(user: UserEntity?): Boolean =
+        user != null && user.role == UserRole.DRIVER && user.isActive && user.activationStatus == "ACTIVE"
+
     // --- Flows ---
     val allPartners: Flow<List<PartnerEntity>> = dao.getAllPartners()
     fun getPartnersByType(type: PartnerType): Flow<List<PartnerEntity>> = dao.getPartnersByType(type)
@@ -71,7 +74,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             .sortedBy { it.queuePosition }
         for (assignment in assignments) {
             val driver = dao.getDriverById(assignment.driverId) ?: continue
-            if (driver.status == DriverStatus.AVAILABLE && driver.currentOrderId == null) return@withContext driver
+            val user = dao.getUserByAssociatedDriverId(driver.id)
+            if (isActiveDriverAccount(user) && driver.status == DriverStatus.AVAILABLE && driver.currentOrderId == null) return@withContext driver
         }
         null
     }
@@ -926,7 +930,9 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             passwordHash = passwordHash,
             passwordSalt = passwordSalt,
             role = UserRole.DRIVER,
-            associatedDriverId = driverId
+            associatedDriverId = driverId,
+            isActive = false,
+            activationStatus = "PENDING_APPROVAL"
         )
         dao.insertUser(user)
         driverId
@@ -940,18 +946,43 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         dao.deleteDriver(driver)
     }
 
-    suspend fun setAccountActivation(userId: Long, active: Boolean, reason: String = "") = withContext(Dispatchers.IO) {
-        dao.updateUserActivation(
-            userId = userId,
-            active = active,
-            status = if (active) "ACTIVE" else "SUSPENDED",
-            reason = reason
-        )
+    suspend fun approveDriverAccount(userId: Long) = withContext(Dispatchers.IO) {
+        dao.updateUserActivation(userId, true, "ACTIVE", "")
     }
 
-    suspend fun setDriverAvailability(driverId: Long, status: DriverStatus) = withContext(Dispatchers.IO) {
-        val driver = dao.getDriverById(driverId) ?: return@withContext
+    suspend fun rejectDriverAccount(userId: Long, reason: String) = withContext(Dispatchers.IO) {
+        dao.updateUserActivation(userId, false, "REJECTED", reason)
+    }
+
+    suspend fun suspendDriverAccount(userId: Long, reason: String) = withContext(Dispatchers.IO) {
+        val user = dao.getUserById(userId) ?: return@withContext
+        dao.updateUserActivation(userId, false, "SUSPENDED", reason)
+        user.associatedDriverId?.let { driverId ->
+            dao.getDriverById(driverId)?.let { driver ->
+                dao.updateDriver(driver.copy(status = DriverStatus.OFFLINE))
+            }
+        }
+    }
+
+    suspend fun setAccountActivation(userId: Long, active: Boolean, reason: String = "") = withContext(Dispatchers.IO) {
+        if (active) approveDriverAccount(userId) else suspendDriverAccount(userId, reason)
+    }
+
+    suspend fun setDriverAvailability(driverId: Long, status: DriverStatus): Result<Unit> = withContext(Dispatchers.IO) {
+        val driver = dao.getDriverById(driverId)
+            ?: return@withContext Result.failure(IllegalArgumentException("المندوب غير موجود"))
+        val user = dao.getUserByAssociatedDriverId(driverId)
+        if (!isActiveDriverAccount(user)) {
+            return@withContext Result.failure(IllegalStateException("حساب المندوب غير مفعل"))
+        }
+        if (status !in setOf(DriverStatus.OFFLINE, DriverStatus.AVAILABLE)) {
+            return@withContext Result.failure(IllegalArgumentException("لا يمكن تغيير حالة العمل إلى هذه الحالة يدويًا"))
+        }
+        if (driver.status == DriverStatus.BUSY && status == DriverStatus.OFFLINE) {
+            return@withContext Result.failure(IllegalStateException("لا يمكن فصل المندوب أثناء وجود طلب نشط"))
+        }
         dao.updateDriver(driver.copy(status = status))
+        Result.success(Unit)
     }
 
     // --- Coupon Operations ---
