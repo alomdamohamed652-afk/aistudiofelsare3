@@ -1,7 +1,6 @@
 package com.example.ui
 
 import android.app.Application
-import com.example.BuildConfig
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.BuildConfig
@@ -16,7 +15,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     private val database = FalsareeDatabase.getDatabase(application)
     val repository = FalsareeRepository(database.dao())
-    val authRepository = LocalAuthRepository(database.dao())
+    val authRepository = LocalAuthRepository(application, database.dao())
 
     // Current authenticated session — drives all user-specific data
     val currentSession: StateFlow<UserSession?> = authRepository.currentSession
@@ -91,11 +90,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         .flatMapLatest { session -> session?.associatedDriverId?.let(repository::getDriverPayoutRequests) ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
- fix/identity-hardening
-    // Active Partner ID is available only when the authenticated session is linked to a partner.
-
-    // Active partner identity must come from the authenticated session.
- main
+    // Active partner identity is derived from the authenticated session.
     private val _activePartnerId = MutableStateFlow<Long?>(null)
     val activePartnerId: StateFlow<Long?> = _activePartnerId.asStateFlow()
 
@@ -110,8 +105,8 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     private val _cartItems = MutableStateFlow<Map<ProductEntity, Int>>(emptyMap())
     val cartItems: StateFlow<Map<ProductEntity, Int>> = _cartItems.asStateFlow()
 
-    private val _cartOptions = MutableStateFlow<Map<Long, String>>(emptyMap()) // productId to options text
-    val cartOptions: StateFlow<Map<Long, String>> = _cartOptions.asStateFlow()
+    private val _cartOptions = MutableStateFlow<Map<ProductEntity, String>>(emptyMap()) // configured product to options text
+    val cartOptions: StateFlow<Map<ProductEntity, String>> = _cartOptions.asStateFlow()
 
     private val _appliedCoupon = MutableStateFlow<CouponEntity?>(null)
     val appliedCoupon: StateFlow<CouponEntity?> = _appliedCoupon.asStateFlow()
@@ -137,6 +132,9 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             repository.seedInitialDataIfEmpty()
         }
+        viewModelScope.launch {
+            authRepository.restoreSession()
+        }
 
         // Keep operational identities synchronized with the authenticated session.
         viewModelScope.launch {
@@ -155,17 +153,12 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             runCatching { authRepository.switchDevelopmentRole(role) }
- fix/identity-hardening
-                .onFailure {
-                    _alertMessage.value = it.message ?: "تعذر تبديل الدور"
-
                 .onSuccess { updatedSession ->
                     _activeDriverId.value = updatedSession.associatedDriverId
                     _activePartnerId.value = updatedSession.associatedPartnerId
                 }
                 .onFailure { error ->
                     _alertMessage.value = error.message ?: "تعذر تبديل الدور"
- main
                 }
         }
     }
@@ -194,17 +187,11 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun setActivePartnerId(id: Long) {
- fix/identity-hardening
         if (!BuildConfig.DEBUG) {
             _alertMessage.value = "لا يمكن تغيير هوية الشريك خارج وضع الاختبار"
             return
         }
         _activePartnerId.value = id
-
-        if (BuildConfig.DEBUG) {
-            _activePartnerId.value = id
-        }
- main
     }
 
     fun login(identifier: String, password: String) {
@@ -263,7 +250,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             _alertMessage.value = "لا يمكن الطلب من شريكين مختلفين في نفس السلة. تم إفراغ السلة السابقة وبدء سلة جديدة من ${partner.name}."
             _cartPartner.value = partner
             _cartItems.value = mapOf(product to quantity)
-            _cartOptions.value = mapOf(product.id to optionsSummary)
+            _cartOptions.value = mapOf(product to optionsSummary)
             _appliedCoupon.value = null
             _discountAmount.value = 0.0
             return
@@ -277,7 +264,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
         if (optionsSummary.isNotEmpty()) {
             val optMap = _cartOptions.value.toMutableMap()
-            optMap[product.id] = optionsSummary
+            optMap[product] = optionsSummary
             _cartOptions.value = optMap
         }
         _alertMessage.value = "تمت إضافة ${product.name} إلى السلة ⚡"
@@ -290,7 +277,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         if (newQty <= 0) {
             currentMap.remove(product)
             val optMap = _cartOptions.value.toMutableMap()
-            optMap.remove(product.id)
+            optMap.remove(product)
             _cartOptions.value = optMap
         } else {
             currentMap[product] = newQty
@@ -327,40 +314,55 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun placeOrder(
-        customerName: String = "عميل فالسريع",
-        customerPhone: String = "01000000000",
         deliveryAddress: String,
         customerNotes: String = "",
         paymentMethod: PaymentMethod,
-        transferReceiptNote: String = ""
+        transferReceiptNote: String = "",
+        transferReceiptUri: String = ""
     ) {
-        val partner = _cartPartner.value ?: return
-        val itemsList = _cartItems.value.map { Pair(it.key, it.value) }
-        val optionsSummary = _cartOptions.value.values.joinToString(", ")
+        val partner = _cartPartner.value
+        val itemsList = _cartItems.value.map { (product, quantity) ->
+            Triple(product, quantity, _cartOptions.value[product].orEmpty())
+        }
+
+        if (partner == null || itemsList.isEmpty()) {
+            _alertMessage.value = "السلة فارغة، أضف منتجًا واحدًا على الأقل"
+            return
+        }
+        if (deliveryAddress.isBlank()) {
+            _alertMessage.value = "اختر عنوان التوصيل أولًا"
+            return
+        }
+        if (paymentMethod == PaymentMethod.BANK_TRANSFER && transferReceiptUri.isBlank()) {
+            _alertMessage.value = "أرفق صورة إشعار التحويل قبل تأكيد الطلب"
+            return
+        }
 
         viewModelScope.launch {
-            val customerId = currentSession.value?.associatedCustomerId
-            if (customerId == null) {
-                _alertMessage.value = "يجب تسجيل الدخول لإرسال الطلب"
+            val session = currentSession.value
+            val customerId = session?.associatedCustomerId
+            if (session == null || customerId == null) {
+                _alertMessage.value = "يجب تسجيل الدخول بحساب عميل لإرسال الطلب"
                 return@launch
             }
+
             val res = repository.placeOrder(
                 customerId = customerId,
-                customerName = customerName,
-                customerPhone = customerPhone,
+                customerName = session.name,
+                customerPhone = session.phone,
                 partner = partner,
                 items = itemsList,
-                optionsNotes = optionsSummary,
-                deliveryAddress = deliveryAddress,
-                customerNotes = customerNotes,
+                deliveryAddress = deliveryAddress.trim(),
+                customerNotes = customerNotes.trim(),
                 paymentMethod = paymentMethod,
                 appliedDiscount = _discountAmount.value,
-                transferReceiptNote = transferReceiptNote
+                transferReceiptNote = transferReceiptNote.trim(),
+                transferReceiptUri = transferReceiptUri
             )
             res.onSuccess { orderId ->
                 clearCart()
                 _trackedOrderId.value = orderId
-                _customerSelectedTab.value = 2 // Go to Orders tab
+                _customerSelectedTab.value = 2
                 _selectedPartner.value = null
                 _alertMessage.value = "تم تأكيد طلبك بنجاح! يوصلك فالسريع ⚡"
             }.onFailure { error ->
