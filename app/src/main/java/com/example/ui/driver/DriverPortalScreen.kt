@@ -39,6 +39,7 @@ fun DriverPortalScreen(
     onRequestPayout: (Double) -> Unit = {},
     onToggleAvailability: (DriverStatus) -> Unit,
     onAcceptOrder: (OrderEntity) -> Unit,
+    onRejectOrder: (OrderEntity, String) -> Unit,
     onConfirmPickup: (OrderEntity) -> Unit,
     onConfirmDelivered: (OrderEntity) -> Unit,
     onSwitchRole: (UserRole) -> Unit,
@@ -203,6 +204,7 @@ fun DriverPortalScreen(
                     activeOrder = activeOrder,
                     openOrders = openOrders,
                     onAcceptOrder = onAcceptOrder,
+                    onRejectOrder = onRejectOrder,
                     onConfirmPickup = onConfirmPickup,
                     onConfirmDelivered = onConfirmDelivered
                 )
@@ -210,7 +212,8 @@ fun DriverPortalScreen(
                     activeOrder = activeOrder,
                     allDriverOrders = driverOrders,
                     openOrders = openOrders,
-                    onAcceptOrder = onAcceptOrder
+                    onAcceptOrder = onAcceptOrder,
+                    onRejectOrder = onRejectOrder
                 )
                 2 -> DriverWalletScreen(
                     driver = driver,
@@ -231,6 +234,7 @@ fun DriverHomeScreen(
     activeOrder: OrderEntity?,
     openOrders: List<OrderEntity>,
     onAcceptOrder: (OrderEntity) -> Unit,
+    onRejectOrder: (OrderEntity, String) -> Unit,
     onConfirmPickup: (OrderEntity) -> Unit,
     onConfirmDelivered: (OrderEntity) -> Unit
 ) {
