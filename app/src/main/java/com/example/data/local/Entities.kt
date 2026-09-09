@@ -45,8 +45,8 @@ data class ProductEntity(
     val price: Double,
     val status: ProductStatus = ProductStatus.AVAILABLE,
     val imageEmoji: String,
-    val sizesString: String = "صغير:0.0,وسط:20.0,كبير:40.0", // options
-    val addonsString: String = "جبنة زيادة:15.0,صوص خاص:10.0,مخلل:5.0"
+    val sizesString: String = "", // optional size choices, stored as name:price pairs
+    val addonsString: String = "" // optional add-ons, stored as name:price pairs
 )
 
 @Entity(tableName = "orders")
