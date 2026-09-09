@@ -369,6 +369,10 @@ fun FalsareeApp(
                             val partnerProducts = activePartner?.let { partner ->
                                 products.filter { it.partnerId == partner.id }
                             } ?: emptyList()
+                            val partnerCategories by activePartner?.let { partner ->
+                                viewModel.repository.getCategoriesForPartner(partner.id)
+                            }?.collectAsStateWithLifecycle(initialValue = emptyList())
+                                ?: remember { mutableStateOf(emptyList()) }
 
                             if (activePartner == null) {
                                 Box(
@@ -385,6 +389,7 @@ fun FalsareeApp(
                                 activePartner = activePartner,
                                 orders = orders,
                                 products = partnerProducts,
+                                categories = partnerCategories,
                                 onSelectPartner = { viewModel.setActivePartnerId(it) },
                                 onToggleOpen = { isOpen ->
                                     if (activePartner != null) {
@@ -437,6 +442,12 @@ fun FalsareeApp(
                                 },
                                 onSaveProduct = { prod ->
                                     coroutineScope.launch { viewModel.repository.saveProduct(prod) }
+                                },
+                                onSaveCategory = { category ->
+                                    coroutineScope.launch { viewModel.repository.saveCategory(category) }
+                                },
+                                onDeleteCategory = { category ->
+                                    coroutineScope.launch { viewModel.repository.deleteCategory(category) }
                                 },
                                 onDeleteProduct = { prod ->
                                     coroutineScope.launch { viewModel.repository.deleteProduct(prod) }
