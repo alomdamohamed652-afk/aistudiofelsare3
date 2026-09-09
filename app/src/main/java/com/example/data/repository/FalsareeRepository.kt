@@ -180,8 +180,16 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             if (order.driverId != null) {
                 return@withContext Result.failure(IllegalStateException("الطلب تم تعيينه بالفعل"))
             }
+            val latestEvent = dao.getLatestDriverEvent(orderId, driverId)
+                ?: return@withContext Result.failure(IllegalStateException("لا يوجد عرض لهذا المندوب"))
+            if (latestEvent.eventType in setOf("ACCEPTED", "REJECTED", "TIMEOUT")) {
+                return@withContext Result.failure(IllegalStateException("تم التعامل مع العرض بالفعل"))
+            }
             val offer = dao.getLatestDriverOffer(orderId, driverId)
                 ?: return@withContext Result.failure(IllegalStateException("لا يوجد عرض لهذا المندوب"))
+            if (offer.id != latestEvent.id) {
+                return@withContext Result.failure(IllegalStateException("العرض لم يعد نشطًا"))
+            }
             if (offer.expiresAt <= 0L || System.currentTimeMillis() <= offer.expiresAt) {
                 return@withContext Result.failure(IllegalStateException("مهلة العرض لم تنته بعد"))
             }
@@ -629,7 +637,10 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         if (!assignment.active || assignment.shiftName != shiftName) return false
         if (assignment.forcedBreakUntil > now) return false
         val driver = dao.getDriverById(driverId) ?: return false
-        return driver.status == DriverStatus.AVAILABLE && driver.currentOrderId == null
+        val account = dao.getUserByAssociatedDriverId(driver.id)
+        return isActiveDriverAccount(account) &&
+            driver.status == DriverStatus.AVAILABLE &&
+            driver.currentOrderId == null
     }
 
     private suspend fun validateActiveOffer(
