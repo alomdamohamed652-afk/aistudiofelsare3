@@ -16,7 +16,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     private val database = FalsareeDatabase.getDatabase(application)
     val repository = FalsareeRepository(database.dao())
-    val authRepository = LocalAuthRepository(database.dao())
+    val authRepository = LocalAuthRepository(application, database.dao())
 
     // Current authenticated session — drives all user-specific data
     val currentSession: StateFlow<UserSession?> = authRepository.currentSession
@@ -136,6 +136,9 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     init {
         viewModelScope.launch {
             repository.seedInitialDataIfEmpty()
+        }
+        viewModelScope.launch {
+            authRepository.restoreSession()
         }
 
         // Keep operational identities synchronized with the authenticated session.
