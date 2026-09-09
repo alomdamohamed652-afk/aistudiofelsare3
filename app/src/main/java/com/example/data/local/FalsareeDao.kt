@@ -285,4 +285,23 @@ interface FalsareeDao {
 
     @Query("SELECT * FROM driver_payout_requests ORDER BY createdAt DESC")
     fun getAllPayoutRequests(): Flow<List<DriverPayoutRequestEntity>>
+    // --- Driver shifts & dispatch ---
+    @Query("SELECT * FROM driver_shift_assignments WHERE active = 1 ORDER BY shiftName, queuePosition")
+    fun getActiveDriverShiftAssignments(): Flow<List<DriverShiftAssignmentEntity>>
+
+    @Query("SELECT * FROM driver_shift_assignments WHERE driverId = :driverId LIMIT 1")
+    suspend fun getDriverShiftAssignment(driverId: Long): DriverShiftAssignmentEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDriverShiftAssignment(assignment: DriverShiftAssignmentEntity): Long
+
+    @Update
+    suspend fun updateDriverShiftAssignment(assignment: DriverShiftAssignmentEntity)
+
+    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId ORDER BY createdAt ASC")
+    fun getDispatchEventsForOrder(orderId: Long): Flow<List<DriverDispatchEventEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDriverDispatchEvent(event: DriverDispatchEventEntity): Long
+
 }
