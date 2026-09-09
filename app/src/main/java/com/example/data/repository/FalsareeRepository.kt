@@ -613,13 +613,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             UserEntity(
                 name = "عمرو إبراهيم",
                 phone = "01011122233",
- fix/identity-hardening
                 passwordHash = "6de6eb033759a8a9a255d64386afc169c03ce46f1156907b7e7043c6b98c522d",
                 passwordSalt = "falsaree_seed_v1"
-
-                passwordHash = "c15c1c1a2f31f8cda2ecbcb1b44d96f0f9f9f2d0a5d5c6e8c9a0b1d2e3f4a5b6",
-                passwordSalt = "seed-only-sample-account"
- main
             )
         )
 
