@@ -324,8 +324,22 @@ fun FalsareeApp(
 
                         UserRole.DRIVER -> {
                             val activeDriver = activeDriverId?.let { id -> drivers.find { it.id == id } }
-                            val driverActiveOrder = orders.find { it.driverId == activeDriver?.id && it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED }
-                            val openOrders = orders.filter { it.driverId == null && it.deliveryStatus == com.example.core.model.DeliveryStatus.WAITING_FOR_DRIVER && it.orderStatus !in listOf(com.example.core.model.OrderStatus.CANCELLED, com.example.core.model.OrderStatus.REJECTED) }
+                            val driverActiveOrder = orders.find {
+                                it.driverId == activeDriver?.id &&
+                                    it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED
+                            }
+                            val activeOfferOrderIds = viewModel.activeDriverOfferEvents
+                                .map { it.orderId }
+                                .toSet()
+                            val openOrders = orders.filter {
+                                it.id in activeOfferOrderIds &&
+                                    it.driverId == null &&
+                                    it.deliveryStatus == com.example.core.model.DeliveryStatus.WAITING_FOR_DRIVER &&
+                                    it.orderStatus !in listOf(
+                                        com.example.core.model.OrderStatus.CANCELLED,
+                                        com.example.core.model.OrderStatus.REJECTED
+                                    )
+                            }
                             val driverOrders = orders.filter { it.driverId == activeDriver?.id }
 
                             DriverPortalScreen(
