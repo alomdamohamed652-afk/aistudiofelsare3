@@ -171,6 +171,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM drivers WHERE id = :id")
     suspend fun getDriverById(id: Long): DriverProfileEntity?
 
+    @Query("SELECT * FROM drivers WHERE phone = :phone LIMIT 1")
+    suspend fun getDriverByPhone(phone: String): DriverProfileEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDrivers(drivers: List<DriverProfileEntity>)
 
