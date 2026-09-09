@@ -51,6 +51,7 @@ fun FalsareeApp(
     val orders by viewModel.repository.allOrders.collectAsStateWithLifecycle(initialValue = emptyList())
     val drivers by viewModel.repository.allDrivers.collectAsStateWithLifecycle(initialValue = emptyList())
     val driverAccounts by viewModel.repository.allDriverAccounts.collectAsStateWithLifecycle(initialValue = emptyList())
+    val driverShiftAssignments by viewModel.repository.driverShiftAssignments.collectAsStateWithLifecycle(initialValue = emptyList())
     val homeSections by viewModel.repository.activeHomeSections.collectAsStateWithLifecycle(initialValue = emptyList())
     val coupons by viewModel.repository.allCoupons.collectAsStateWithLifecycle(initialValue = emptyList())
     val customerOrders by viewModel.customerOrders.collectAsStateWithLifecycle()
@@ -291,6 +292,13 @@ fun FalsareeApp(
                                 },
                                 onRestoreDriver = { id ->
                                     coroutineScope.launch { viewModel.repository.restoreDriverFromForcedBreak(id) }
+                                },
+                                shiftAssignments = driverShiftAssignments,
+                                onAssignShift = { id, shift, position ->
+                                    coroutineScope.launch { viewModel.repository.assignDriverToShift(id, shift, position) }
+                                },
+                                onSetShiftActive = { id, active ->
+                                    coroutineScope.launch { viewModel.repository.setDriverShiftActive(id, active) }
                                 },
                                 onSaveHomeSection = { sec ->
                                     coroutineScope.launch { viewModel.repository.saveHomeSection(sec) }
