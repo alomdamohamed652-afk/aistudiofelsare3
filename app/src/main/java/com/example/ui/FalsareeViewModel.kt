@@ -332,10 +332,15 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         deliveryAddress: String,
         customerNotes: String = "",
         paymentMethod: PaymentMethod,
-        transferReceiptNote: String = ""
+        transferReceiptNote: String = "",
+        transferReceiptUri: String = ""
     ) {
         val partner = _cartPartner.value ?: return
         val itemsList = _cartItems.value.map { Pair(it.key, it.value) }
+        if (paymentMethod == PaymentMethod.BANK_TRANSFER && transferReceiptUri.isBlank()) {
+            _alertMessage.value = "أرفق صورة إشعار التحويل قبل تأكيد الطلب"
+            return
+        }
         val optionsSummary = _cartOptions.value.values.joinToString(", ")
 
         viewModelScope.launch {
@@ -355,7 +360,8 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
                 customerNotes = customerNotes,
                 paymentMethod = paymentMethod,
                 appliedDiscount = _discountAmount.value,
-                transferReceiptNote = transferReceiptNote
+                transferReceiptNote = transferReceiptNote,
+                transferReceiptUri = transferReceiptUri
             )
             res.onSuccess { orderId ->
                 clearCart()
