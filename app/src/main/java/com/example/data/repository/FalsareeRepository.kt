@@ -457,6 +457,10 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             ?: return@withContext Result.failure(Exception("المندوب غير موجود"))
         val order = dao.getOrderById(orderId)
             ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+        val latestOffer = dao.getLatestDriverOffer(orderId, driverId)
+        if (latestOffer != null && latestOffer.expiresAt > 0L && System.currentTimeMillis() > latestOffer.expiresAt) {
+            return@withContext Result.failure(IllegalStateException("انتهت مهلة قبول الطلب"))
+        }
         if (order.driverId != null && order.driverId != driverId)
             return@withContext Result.failure(IllegalStateException("تم قبول الطلب بواسطة مندوب آخر"))
         recordDriverDispatchEvent(orderId, driverId, "ACCEPTED")
