@@ -478,9 +478,16 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             if (dId != null) {
                 val driver = dao.getDriverById(dId)
                 if (driver != null) {
+                    val now = System.currentTimeMillis()
+                    val assignment = dao.getDriverShiftAssignment(dId)
+                    val releaseStatus = when {
+                        !isActiveDriverAccount(dao.getUserByAssociatedDriverId(dId)) -> DriverStatus.OFFLINE
+                        assignment?.forcedBreakUntil ?: 0L > now -> DriverStatus.BREAK
+                        else -> DriverStatus.AVAILABLE
+                    }
                     dao.updateDriver(
                         driver.copy(
-                            status = DriverStatus.OFFLINE,
+                            status = releaseStatus,
                             todayEarnings = driver.todayEarnings + current.deliveryFee,
                             totalEarnings = driver.totalEarnings + current.deliveryFee,
                             completedOrdersCount = driver.completedOrdersCount + 1,
