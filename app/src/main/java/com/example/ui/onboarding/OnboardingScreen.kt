@@ -16,6 +16,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -105,10 +107,11 @@ fun OnboardingScreen(
                             .background(BrandPrimary.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = page.iconEmoji,
-                            fontSize = 64.sp
-                        )
+                        if (page.imageUrl.isNotBlank()) {
+                            AsyncImage(model = page.imageUrl, contentDescription = page.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        } else {
+                            Text(text = page.iconEmoji, fontSize = 64.sp)
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(32.dp))
