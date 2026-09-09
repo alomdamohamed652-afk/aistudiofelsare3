@@ -41,12 +41,14 @@ fun PartnerPortalScreen(
     onStartPreparing: (OrderEntity, prepMinutes: Int) -> Unit,
     onReadyForPickup: (OrderEntity) -> Unit,
     onSaveProduct: (ProductEntity) -> Unit,
+    onDeleteProduct: (ProductEntity) -> Unit,
     onUpdateProductStatus: (Long, ProductStatus) -> Unit,
     onSwitchRole: (UserRole) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var partnerTab by remember { mutableIntStateOf(0) } // 0: Orders Queue, 1: Products Menu, 2: Reports
     var showAddProductDialog by remember { mutableStateOf(false) }
+    var editingProduct by remember { mutableStateOf<ProductEntity?>(null) }
 
     val partnerOrders = remember(orders, activePartner) {
         if (activePartner == null) emptyList()
@@ -340,36 +342,24 @@ fun PartnerPortalScreen(
                     }
 
                     items(products) { prod ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                    Text(prod.imageEmoji, fontSize = 28.sp)
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(prod.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                        Text("${prod.price.toInt()} ج.م • ${prod.category}", style = MaterialTheme.typography.bodySmall, color = BrandPrimary, fontWeight = FontWeight.SemiBold)
+                        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard), border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (prod.imageUrl.isNotBlank()) "🖼️" else prod.imageEmoji, fontSize = 28.sp)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(prod.name, fontWeight = FontWeight.Bold)
+                                        Text("${prod.price.toInt()} ج.م • ${prod.category}", style = MaterialTheme.typography.bodySmall, color = BrandPrimary)
+                                        if (prod.sizesString.isNotBlank()) Text("الأحجام: ${prod.sizesString}", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                                        if (prod.addonsString.isNotBlank()) Text("الإضافات: ${prod.addonsString}", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
                                     }
+                                    val isAvailable = prod.status == ProductStatus.AVAILABLE
+                                    FilterChip(selected = isAvailable, onClick = { onUpdateProductStatus(prod.id, if (isAvailable) ProductStatus.TEMPORARILY_UNAVAILABLE else ProductStatus.AVAILABLE) }, label = { Text(if (isAvailable) "متاح 🟢" else "غير متاح 🔴") })
                                 }
-
-                                // Status toggle
-                                val isAvailable = prod.status == ProductStatus.AVAILABLE
-                                FilterChip(
-                                    selected = isAvailable,
-                                    onClick = {
-                                        val next = if (isAvailable) ProductStatus.TEMPORARILY_UNAVAILABLE else ProductStatus.AVAILABLE
-                                        onUpdateProductStatus(prod.id, next)
-                                    },
-                                    label = { Text(if (isAvailable) "متاح 🟢" else "غير متاح 🔴") }
-                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = { editingProduct = prod; showAddProductDialog = true }) { Text("تعديل") }
+                                    OutlinedButton(onClick = { onDeleteProduct(prod) }) { Text("حذف") }
+                                }
                             }
                         }
                     }
@@ -430,49 +420,38 @@ fun PartnerPortalScreen(
         }
     }
 
-    // Add Product Dialog
+    // Product editor
     if (showAddProductDialog && activePartner != null) {
-        var prodName by remember { mutableStateOf("") }
-        var prodCat by remember { mutableStateOf("عام") }
-        var prodPrice by remember { mutableStateOf("90") }
-        var prodDesc by remember { mutableStateOf("") }
-        var prodEmoji by remember { mutableStateOf("🍕") }
-
+        val existing = editingProduct
+        var prodName by remember(existing) { mutableStateOf(existing?.name ?: "") }
+        var prodCat by remember(existing) { mutableStateOf(existing?.category ?: "عام") }
+        var prodPrice by remember(existing) { mutableStateOf(existing?.price?.toString() ?: "90") }
+        var prodDesc by remember(existing) { mutableStateOf(existing?.description ?: "") }
+        var prodEmoji by remember(existing) { mutableStateOf(existing?.imageEmoji ?: "🍕") }
+        var imageUrl by remember(existing) { mutableStateOf(existing?.imageUrl ?: "") }
+        var sizes by remember(existing) { mutableStateOf(existing?.sizesString ?: "") }
+        var addons by remember(existing) { mutableStateOf(existing?.addonsString ?: "") }
         AlertDialog(
-            onDismissRequest = { showAddProductDialog = false },
-            title = { Text("إضافة صنف جديد", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppInput(value = prodEmoji, onValueChange = { prodEmoji = it }, label = "الأيقونة (إيموجي)")
-                    AppInput(value = prodName, onValueChange = { prodName = it }, label = "اسم الصنف")
-                    AppInput(value = prodCat, onValueChange = { prodCat = it }, label = "التصنيف")
-                    AppInput(value = prodPrice, onValueChange = { prodPrice = it }, label = "السعر (ج.م)")
-                    AppInput(value = prodDesc, onValueChange = { prodDesc = it }, label = "الوصف", singleLine = false)
-                }
-            },
-            confirmButton = {
-                AppButton(
-                    text = "حفظ الصنف",
-                    onClick = {
-                        if (prodName.isNotBlank()) {
-                            onSaveProduct(
-                                ProductEntity(
-                                    partnerId = activePartner.id,
-                                    category = prodCat,
-                                    name = prodName,
-                                    description = prodDesc,
-                                    price = prodPrice.toDoubleOrNull() ?: 50.0,
-                                    imageEmoji = prodEmoji
-                                )
-                            )
-                            showAddProductDialog = false
-                        }
-                    }
-                )
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddProductDialog = false }) { Text("إلغاء") }
-            }
+            onDismissRequest = { showAddProductDialog = false; editingProduct = null },
+            title = { Text(if (existing == null) "إضافة صنف جديد" else "تعديل الصنف", fontWeight = FontWeight.Bold) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppInput(value = prodName, onValueChange = { prodName = it }, label = "اسم الصنف")
+                AppInput(value = prodCat, onValueChange = { prodCat = it }, label = "القسم / التصنيف")
+                AppInput(value = prodPrice, onValueChange = { prodPrice = it }, label = "السعر الأساسي (ج.م)")
+                AppInput(value = prodDesc, onValueChange = { prodDesc = it }, label = "الوصف", singleLine = false)
+                AppInput(value = imageUrl, onValueChange = { imageUrl = it }, label = "رابط الصورة (اختياري)")
+                AppInput(value = prodEmoji, onValueChange = { prodEmoji = it }, label = "رمز احتياطي عند عدم وجود صورة")
+                AppInput(value = sizes, onValueChange = { sizes = it }, label = "الأحجام: مثال صغير:50, كبير:80")
+                AppInput(value = addons, onValueChange = { addons = it }, label = "الإضافات: مثال جبنة:15, صوص:10")
+            }},
+            confirmButton = { AppButton(text = "حفظ", onClick = {
+                if (prodName.isBlank()) return@AppButton
+                val base = existing ?: ProductEntity(partnerId = activePartner.id, category = prodCat, name = prodName, description = prodDesc, price = 0.0, imageEmoji = prodEmoji)
+                onSaveProduct(base.copy(partnerId = activePartner.id, category = prodCat, name = prodName, description = prodDesc, price = prodPrice.toDoubleOrNull() ?: 0.0, imageEmoji = prodEmoji, imageUrl = imageUrl, sizesString = sizes, addonsString = addons))
+                showAddProductDialog = false; editingProduct = null
+            }) },
+            dismissButton = { TextButton(onClick = { showAddProductDialog = false; editingProduct = null }) { Text("إلغاء") } }
         )
     }
+
 }
