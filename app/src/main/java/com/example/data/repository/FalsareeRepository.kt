@@ -14,6 +14,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
+    private class NoEligibleDriverException(message: String) : IllegalStateException(message)
+
     // --- Flows ---
     val allPartners: Flow<List<PartnerEntity>> = dao.getAllPartners()
     fun getPartnersByType(type: PartnerType): Flow<List<PartnerEntity>> = dao.getPartnersByType(type)
@@ -520,7 +522,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
             val excluded = dao.getSequentiallyProcessedDriverIds(orderId).toSet()
             val driver = getNextEligibleDriver(shiftName, excluded)
-                ?: return@withContext Result.failure(IllegalStateException("لا يوجد مندوب مؤهل جديد حاليًا"))
+                ?: return@withContext Result.failure(NoEligibleDriverException("لا يوجد مندوب مؤهل جديد حاليًا"))
             val timeout = (dao.getSettings().firstOrNull()?.driverOfferTimeoutSeconds ?: 30).coerceAtLeast(5)
             recordDriverDispatchEvent(orderId, driver.id, "OFFERED", "Sequential queue", System.currentTimeMillis() + timeout * 1000L)
             dao.getUserByAssociatedDriverId(driver.id)?.let { user ->
@@ -720,15 +722,20 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             }
             DispatchMode.HYBRID -> {
                 val result = offerOrderToNextDriver(orderId, shiftName)
-                if (result.isSuccess) Result.success("SEQUENTIAL")
-                else {
-                    val broadcast = broadcastOrderToEligibleDrivers(orderId, shiftName)
-                    if (broadcast.isSuccess) Result.success("BROADCAST")
-                    else Result.failure(
-                        broadcast.exceptionOrNull()
-                            ?: result.exceptionOrNull()
-                            ?: IllegalStateException("تعذر توزيع الطلب")
-                    )
+                if (result.isSuccess) {
+                    Result.success("SEQUENTIAL")
+                } else {
+                    val sequentialError = result.exceptionOrNull()
+                    if (sequentialError !is NoEligibleDriverException) {
+                        Result.failure(sequentialError ?: IllegalStateException("فشل التوزيع بالتتابع"))
+                    } else {
+                        val broadcast = broadcastOrderToEligibleDrivers(orderId, shiftName)
+                        if (broadcast.isSuccess) Result.success("BROADCAST")
+                        else Result.failure(
+                            broadcast.exceptionOrNull()
+                                ?: sequentialError
+                        )
+                    }
                 }
             }
         }
@@ -742,7 +749,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 return@withContext Result.failure(IllegalStateException("الطلب غير متاح للتوزيع"))
             }
             val eligible = getEligibleDrivers(shiftName)
-            if (eligible.isEmpty()) return@withContext Result.failure(IllegalStateException("لا يوجد مندوب متاح"))
+            if (eligible.isEmpty()) return@withContext Result.failure(NoEligibleDriverException("لا يوجد مندوب متاح"))
             val timeout = (dao.getSettings().firstOrNull()?.driverOfferTimeoutSeconds ?: 30).coerceAtLeast(5)
             val expiresAt = System.currentTimeMillis() + timeout * 1000L
             eligible.forEach { driver ->
