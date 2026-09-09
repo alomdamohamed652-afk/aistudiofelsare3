@@ -39,6 +39,7 @@ fun AdminPortalScreen(
     onUpdateOrderStatus: (orderId: Long, newStatus: OrderStatus, reason: String, forceOverride: Boolean) -> Unit,
     onAssignDriver: (orderId: Long, driver: DriverProfileEntity) -> Unit,
     onReviewTransfer: (orderId: Long, isApproved: Boolean, reason: String) -> Unit,
+    onSaveSettings: (AppSettingsEntity) -> Unit,
     onTogglePartnerStatus: (partnerId: Long, isOpen: Boolean) -> Unit,
     onSavePartner: (PartnerEntity) -> Unit,
     onDeletePartner: (PartnerEntity) -> Unit,
@@ -203,7 +204,8 @@ fun AdminPortalScreen(
                 6 -> AdminSettingsAndTransfersTab(
                     orders = orders,
                     appSettings = appSettings,
-                    onReviewTransfer = onReviewTransfer
+                    onReviewTransfer = onReviewTransfer,
+                    onSaveSettings = onSaveSettings
                 )
                 7 -> AdminActivityLogsTab(logs = activityLogs)
             }
@@ -786,7 +788,8 @@ fun AdminOnboardingTab(
 fun AdminSettingsAndTransfersTab(
     orders: List<OrderEntity>,
     appSettings: AppSettingsEntity?,
-    onReviewTransfer: (orderId: Long, isApproved: Boolean, reason: String) -> Unit
+    onReviewTransfer: (orderId: Long, isApproved: Boolean, reason: String) -> Unit,
+    onSaveSettings: (AppSettingsEntity) -> Unit
 ) {
     val pendingTransfers = remember(orders) {
         orders.filter { it.paymentMethod == PaymentMethod.BANK_TRANSFER && it.paymentStatus == PaymentStatus.PENDING_VERIFICATION }
@@ -861,6 +864,28 @@ fun AdminSettingsAndTransfersTab(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            val current = appSettings ?: AppSettingsEntity()
+            var baseFee by remember(current) { mutableStateOf(current.baseDeliveryFee.toString()) }
+            var minOrder by remember(current) { mutableStateOf(current.minimumOrderAmount.toString()) }
+            var includedKm by remember(current) { mutableStateOf(current.includedDistanceKm.toString()) }
+            var extraKm by remember(current) { mutableStateOf(current.pricePerAdditionalKm.toString()) }
+            var extraPickup by remember(current) { mutableStateOf(current.additionalPickupFee.toString()) }
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("تسعير التوصيل", fontWeight = FontWeight.Bold)
+                    OutlinedTextField(baseFee, { baseFee = it }, label = { Text("سعر التوصيل الأساسي") })
+                    OutlinedTextField(minOrder, { minOrder = it }, label = { Text("الحد الأدنى للطلب") })
+                    OutlinedTextField(includedKm, { includedKm = it }, label = { Text("المسافة المشمولة (كم)") })
+                    OutlinedTextField(extraKm, { extraKm = it }, label = { Text("سعر كل كم إضافي") })
+                    OutlinedTextField(extraPickup, { extraPickup = it }, label = { Text("رسوم جهة استلام إضافية") })
+                    AppButton(text = "حفظ إعدادات التسعير", onClick = {
+                        onSaveSettings(current.copy(baseDeliveryFee = baseFee.toDoubleOrNull() ?: 0.0, minimumOrderAmount = minOrder.toDoubleOrNull() ?: 0.0, includedDistanceKm = includedKm.toDoubleOrNull() ?: 0.0, pricePerAdditionalKm = extraKm.toDoubleOrNull() ?: 0.0, additionalPickupFee = extraPickup.toDoubleOrNull() ?: 0.0))
+                    })
                 }
             }
         }
