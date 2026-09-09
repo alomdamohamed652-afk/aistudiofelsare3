@@ -24,9 +24,11 @@ import androidx.room.TypeConverters
         AppSettingsEntity::class,
         FavoritePartnerEntity::class,
         OrderReviewEntity::class,
-        DriverPayoutRequestEntity::class
+        DriverPayoutRequestEntity::class,
+        DriverShiftAssignmentEntity::class,
+        DriverDispatchEventEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(FalsareeTypeConverters::class)
