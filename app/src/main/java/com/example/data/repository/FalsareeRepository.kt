@@ -99,8 +99,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         customerName: String,
         customerPhone: String,
         partner: PartnerEntity,
-        items: List<Pair<ProductEntity, Int>>, // product to quantity
-        optionsNotes: String,
+        items: List<CartItem>,
         deliveryAddress: String,
         customerNotes: String,
         paymentMethod: PaymentMethod,
@@ -110,7 +109,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         try {
             if (items.isEmpty()) return@withContext Result.failure(IllegalArgumentException("السلة فارغة"))
 
-            val subtotal = items.sumOf { it.first.price * it.second }
+            val subtotal = items.sumOf { it.totalPrice }
             val total = (subtotal + partner.deliveryFee - appliedDiscount).coerceAtLeast(0.0)
             val orderNum = "#FS-${(1000..9999).random()}"
 
@@ -149,15 +148,15 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
             val orderId = dao.insertOrder(order)
 
-            val orderItems = items.map { (prod, qty) ->
+            val orderItems = items.map { item ->
                 OrderItemEntity(
                     orderId = orderId,
-                    productId = prod.id,
-                    productName = prod.name,
-                    quantity = qty,
-                    unitPrice = prod.price,
-                    optionsSummary = optionsNotes,
-                    totalPrice = prod.price * qty
+                    productId = item.productId,
+                    productName = item.productName,
+                    quantity = item.quantity,
+                    unitPrice = item.unitPrice,
+                    optionsSummary = item.optionsSummary,
+                    totalPrice = item.totalPrice
                 )
             }
             dao.insertOrderItems(orderItems)
