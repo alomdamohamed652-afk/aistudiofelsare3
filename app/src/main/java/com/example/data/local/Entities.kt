@@ -68,6 +68,7 @@ data class OrderEntity(
     val paymentMethod: PaymentMethod = PaymentMethod.CASH_ON_DELIVERY,
     val paymentStatus: PaymentStatus = PaymentStatus.PENDING,
     val transferReceiptNote: String = "",
+    val transferReceiptUri: String = "",
     val deliveryAddress: String,
     val subtotal: Double,
     val deliveryFee: Double,
