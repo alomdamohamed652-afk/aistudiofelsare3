@@ -703,6 +703,37 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             }
         }
 
+    suspend fun dispatchOrder(orderId: Long, shiftName: String): Result<String> = withContext(Dispatchers.IO) {
+        val order = dao.getOrderById(orderId)
+            ?: return@withContext Result.failure(IllegalArgumentException("الطلب غير موجود"))
+        if (order.driverId != null || order.deliveryStatus != DeliveryStatus.WAITING_FOR_DRIVER) {
+            return@withContext Result.failure(IllegalStateException("الطلب غير متاح للتوزيع"))
+        }
+        when (order.dispatchMode) {
+            DispatchMode.SEQUENTIAL -> {
+                val result = offerOrderToNextDriver(orderId, shiftName)
+                result.map { "SEQUENTIAL" }
+            }
+            DispatchMode.BROADCAST -> {
+                val result = broadcastOrderToEligibleDrivers(orderId, shiftName)
+                result.map { "BROADCAST" }
+            }
+            DispatchMode.HYBRID -> {
+                val result = offerOrderToNextDriver(orderId, shiftName)
+                if (result.isSuccess) Result.success("SEQUENTIAL")
+                else {
+                    val broadcast = broadcastOrderToEligibleDrivers(orderId, shiftName)
+                    if (broadcast.isSuccess) Result.success("BROADCAST")
+                    else Result.failure(
+                        broadcast.exceptionOrNull()
+                            ?: result.exceptionOrNull()
+                            ?: IllegalStateException("تعذر توزيع الطلب")
+                    )
+                }
+            }
+        }
+    }
+
     suspend fun broadcastOrderToEligibleDrivers(orderId: Long, shiftName: String): Result<Int> =
         withContext(Dispatchers.IO) {
             val order = dao.getOrderById(orderId)
@@ -982,7 +1013,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 id = 1,
                 onboardingEnabled = true,
                 defaultApproval = ApprovalWorkflow.PARTNER,
-                defaultDispatchMode = DispatchMode.OPEN_DISPATCH,
+                defaultDispatchMode = DispatchMode.SEQUENTIAL,
                 dispatchTriggerTiming = "عند بدء التجهيز"
             )
         )
@@ -1317,7 +1348,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             partnerType = pizzaPartner.type,
             orderStatus = OrderStatus.PREPARING,
             deliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER,
-            dispatchMode = DispatchMode.OPEN_DISPATCH,
+            dispatchMode = DispatchMode.SEQUENTIAL,
             paymentMethod = PaymentMethod.CASH_ON_DELIVERY,
             paymentStatus = PaymentStatus.PENDING,
             deliveryAddress = "شارع سوريا، عمارة 14، المهندسين",
@@ -1339,7 +1370,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             partnerType = pharmacyPartner.type,
             orderStatus = OrderStatus.PENDING_REVIEW,
             deliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER,
-            dispatchMode = DispatchMode.OPEN_DISPATCH,
+            dispatchMode = DispatchMode.SEQUENTIAL,
             paymentMethod = PaymentMethod.BANK_TRANSFER,
             paymentStatus = PaymentStatus.PENDING_VERIFICATION,
             transferReceiptNote = "تم تحويل 152 ج.م عبر انستاباي رقم مرجعي 987412",
