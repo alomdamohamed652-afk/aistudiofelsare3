@@ -44,6 +44,13 @@ class LocalAuthRepository(
         if (existingUser != null && !verifyPassword(password, existingUser.passwordSalt, existingUser.passwordHash)) {
             return@withContext Result.failure(IllegalArgumentException("بيانات تسجيل الدخول غير صحيحة"))
         }
+        if (existingUser != null && !existingUser.isActive) {
+            return@withContext Result.failure(IllegalStateException(
+                if (existingUser.activationStatus == "PENDING_ACTIVATION")
+                    "تم إنشاء الحساب وبانتظار تفعيل الإدارة"
+                else "الحساب غير نشط. تواصل مع الإدارة"
+            ))
+        }
         val session = existingUser?.let {
             UserSession(
                 userId = it.id,
@@ -91,7 +98,9 @@ class LocalAuthRepository(
                     email = normalizedEmail,
                     passwordHash = hashPassword(password, salt),
                     passwordSalt = salt,
-                    role = role
+                    role = role,
+                    isActive = role != UserRole.DRIVER,
+                    activationStatus = if (role == UserRole.DRIVER) "PENDING_ACTIVATION" else "ACTIVE"
                 )
             )
 
