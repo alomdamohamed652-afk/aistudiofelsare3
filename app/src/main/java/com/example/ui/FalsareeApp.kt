@@ -272,6 +272,15 @@ fun FalsareeApp(
                                         viewModel.repository.setDriverAvailability(id, st)
                                     }
                                 },
+                                onAddDriver = { driver ->
+                                    coroutineScope.launch { viewModel.repository.addDriver(driver) }
+                                },
+                                onUpdateDriver = { driver ->
+                                    coroutineScope.launch { viewModel.repository.updateDriverProfile(driver) }
+                                },
+                                onDeleteDriver = { driver ->
+                                    coroutineScope.launch { viewModel.repository.deleteDriverProfile(driver) }
+                                },
                                 onSaveHomeSection = { sec ->
                                     coroutineScope.launch { viewModel.repository.saveHomeSection(sec) }
                                 },
