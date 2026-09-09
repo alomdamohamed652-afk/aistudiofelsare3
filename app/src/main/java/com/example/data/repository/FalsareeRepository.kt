@@ -157,14 +157,20 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     suspend fun putDriverOnForcedBreak(driverId: Long, minutes: Int) = withContext(Dispatchers.IO) {
         val assignment = dao.getDriverShiftAssignment(driverId)
             ?: return@withContext
+        val driver = dao.getDriverById(driverId) ?: return@withContext
+        if (driver.currentOrderId != null || driver.status == DriverStatus.BUSY) {
+            return@withContext
+        }
+        val now = System.currentTimeMillis()
+        val alreadyOnBreak = assignment.forcedBreakUntil > now && driver.status == DriverStatus.BREAK
         dao.updateDriverShiftAssignment(
             assignment.copy(
-                forcedBreakUntil = System.currentTimeMillis() + minutes.coerceAtLeast(1) * 60_000L,
-                statusBeforeBreak = dao.getDriverById(driverId)?.status ?: assignment.statusBeforeBreak,
-                updatedAt = System.currentTimeMillis()
+                forcedBreakUntil = now + minutes.coerceAtLeast(1) * 60_000L,
+                statusBeforeBreak = if (alreadyOnBreak) assignment.statusBeforeBreak else driver.status,
+                updatedAt = now
             )
         )
-        dao.getDriverById(driverId)?.let { driver ->
+        if (driver.status != DriverStatus.BREAK) {
             dao.updateDriver(driver.copy(status = DriverStatus.BREAK))
         }
     }
