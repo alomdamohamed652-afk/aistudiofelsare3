@@ -595,6 +595,8 @@ fun AdminDriversTab(
     onAddDriver: (DriverProfileEntity) -> Unit,
     onUpdateDriver: (DriverProfileEntity) -> Unit,
     onDeleteDriver: (DriverProfileEntity) -> Unit,
+    onForcedBreak: (Long, Int) -> Unit,
+    onRestoreDriver: (Long) -> Unit,
     driverAccounts: List<UserEntity>,
     onSetAccountActivation: (userId: Long, active: Boolean, reason: String) -> Unit
 ) {
@@ -631,6 +633,13 @@ fun AdminDriversTab(
                         AppButton(text = "تعديل", onClick = { editing = driver }, modifier = Modifier.weight(1f))
                         OutlinedButton(onClick = { onToggleDriverStatus(driver.id, if (driver.status == DriverStatus.SUSPENDED) DriverStatus.AVAILABLE else DriverStatus.SUSPENDED) }, modifier = Modifier.weight(1f)) { Text(if (driver.status == DriverStatus.SUSPENDED) "إلغاء الإيقاف" else "إيقاف") }
                         IconButton(onClick = { onDeleteDriver(driver) }) { Icon(Icons.Default.Delete, "حذف", tint = StatusRed) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        if (driver.status == DriverStatus.BREAK) {
+                            OutlinedButton(onClick = { onRestoreDriver(driver.id) }, modifier = Modifier.weight(1f)) { Text("إنهاء الاستراحة") }
+                        } else {
+                            OutlinedButton(onClick = { onForcedBreak(driver.id, 30) }, modifier = Modifier.weight(1f)) { Text("استراحة 30 دقيقة") }
+                        }
                     }
                 }
             }
