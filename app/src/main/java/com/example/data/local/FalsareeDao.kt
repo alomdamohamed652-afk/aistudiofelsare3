@@ -301,6 +301,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId ORDER BY createdAt ASC")
     fun getDispatchEventsForOrder(orderId: Long): Flow<List<DriverDispatchEventEntity>>
 
+    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND driverId = :driverId AND eventType = 'OFFERED' ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getLatestDriverOffer(orderId: Long, driverId: Long): DriverDispatchEventEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDriverDispatchEvent(event: DriverDispatchEventEntity): Long
 
