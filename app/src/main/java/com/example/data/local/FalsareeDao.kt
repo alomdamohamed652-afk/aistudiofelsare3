@@ -310,6 +310,10 @@ interface FalsareeDao {
     @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId ORDER BY createdAt ASC")
     fun getDispatchEventsForOrder(orderId: Long): Flow<List<DriverDispatchEventEntity>>
 
+    @Query("SELECT * FROM driver_dispatch_events WHERE driverId = :driverId AND eventType IN ('OFFERED', 'BROADCAST_OFFER') AND expiresAt > :now AND id = (SELECT MAX(e2.id) FROM driver_dispatch_events e2 WHERE e2.orderId = driver_dispatch_events.orderId AND e2.driverId = :driverId) ORDER BY createdAt DESC")
+    fun getActiveDriverOffers(driverId: Long, now: Long): Flow<List<DriverDispatchEventEntity>>
+
+
     @Query("SELECT COUNT(*) FROM driver_dispatch_events WHERE driverId = :driverId AND eventType = :eventType")
     suspend fun countDriverDispatchEvents(driverId: Long, eventType: String): Int
 
