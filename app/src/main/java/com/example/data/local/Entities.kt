@@ -246,3 +246,24 @@ data class DriverPayoutRequestEntity(
             else -> "قيد المراجعة ⏳"
         }
 }
+
+@Entity(tableName = "driver_shift_assignments")
+data class DriverShiftAssignmentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val driverId: Long,
+    val shiftName: String,
+    val queuePosition: Int,
+    val active: Boolean = true,
+    val forcedBreakUntil: Long = 0L,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "driver_dispatch_events")
+data class DriverDispatchEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val orderId: Long,
+    val driverId: Long,
+    val eventType: String, // OFFERED, ACCEPTED, REJECTED, TIMEOUT, AUTO_SKIPPED
+    val reason: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
