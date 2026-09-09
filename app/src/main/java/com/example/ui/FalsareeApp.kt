@@ -347,6 +347,17 @@ fun FalsareeApp(
                                 driver = activeDriver,
                                 activeOrder = driverActiveOrder,
                                 openOrders = openOrders,
+                                offerExpiryByOrderId = activeDriverOfferEvents
+                                    .groupBy { it.orderId }
+                                    .mapValues { (_, events) -> events.maxOf { it.expiresAt } },
+                                onOfferTimeout = { ord ->
+                                    activeDriver?.let { driver ->
+                                        val shift = driverShiftAssignments
+                                            .firstOrNull { it.driverId == driver.id }
+                                            ?.shiftName ?: "الافتراضي"
+                                        viewModel.timeoutDriverOffer(ord.id, driver.id, shift)
+                                    }
+                                },
                                 driverOrders = driverOrders,
                                 payoutRequests = driverPayoutRequests,
                                 shiftAssignment = activeDriver?.let { driver ->
