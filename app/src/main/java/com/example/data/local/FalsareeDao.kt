@@ -313,11 +313,17 @@ interface FalsareeDao {
     @Query("SELECT COUNT(*) FROM driver_dispatch_events WHERE driverId = :driverId AND eventType = :eventType")
     suspend fun countDriverDispatchEvents(driverId: Long, eventType: String): Int
 
+    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND driverId = :driverId ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getLatestDriverEvent(orderId: Long, driverId: Long): DriverDispatchEventEntity?
+
     @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND driverId = :driverId AND eventType IN ('OFFERED', 'BROADCAST_OFFER') ORDER BY createdAt DESC LIMIT 1")
     suspend fun getLatestDriverOffer(orderId: Long, driverId: Long): DriverDispatchEventEntity?
 
     @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND eventType IN ('OFFERED', 'BROADCAST_OFFER') ORDER BY createdAt DESC LIMIT 1")
     suspend fun getLatestOrderOffer(orderId: Long): DriverDispatchEventEntity?
+
+    @Query("SELECT * FROM driver_shift_assignments WHERE forcedBreakUntil > 0 AND forcedBreakUntil <= :now")
+    suspend fun getExpiredForcedBreakAssignments(now: Long): List<DriverShiftAssignmentEntity>
 
     @Query("SELECT DISTINCT driverId FROM driver_dispatch_events WHERE orderId = :orderId AND eventType IN ('OFFERED', 'REJECTED', 'TIMEOUT')")
     suspend fun getSequentiallyProcessedDriverIds(orderId: Long): List<Long>
