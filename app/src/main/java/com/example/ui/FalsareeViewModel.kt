@@ -90,6 +90,12 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         .flatMapLatest { session -> session?.associatedDriverId?.let(repository::getDriverPayoutRequests) ?: flowOf(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val driverPerformance: StateFlow<com.example.data.local.DriverPerformanceEntity?> = currentSession
+        .flatMapLatest { session ->
+            session?.associatedDriverId?.let(repository::observeDriverPerformance) ?: flowOf(null)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val activeDriverOfferEvents: StateFlow<List<DriverDispatchEventEntity>> = currentSession
         .flatMapLatest { session ->
             session?.associatedDriverId?.let { driverId ->
