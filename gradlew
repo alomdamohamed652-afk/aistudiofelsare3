@@ -4,22 +4,16 @@
 
 APP_NAME="Gradle"
 APP_BASE_NAME=`basename "$0"`
+APP_HOME=`dirname "$0"`
+APP_HOME=`cd "$APP_HOME" && pwd -P`
 
-# Use the maximum available, or set MAX_FD != -1 to use that value.
-MAX_FD="maximum"
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
 
-warn () {
-    echo "$*"
-}
+DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
 
-die () {
-    echo
-    echo "$*"
-    echo
-    exit 1
-}
+warn () { echo "$*"; }
+die () { echo; echo "$*"; echo; exit 1; }
 
-# OS specific support (must be 'true' or 'false').
 cygwin=false
 msys=false
 darwin=false
@@ -30,19 +24,14 @@ case "`uname`" in
   MSYS* | MINGW* ) msys=true ;;
 esac
 
-CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+if [ -n "$JAVA_HOME" ] ; then
+  JAVA_EXE="$JAVA_HOME/bin/java"
+else
+  JAVA_EXE="java"
+fi
 
-# Determine the operating system.
-APP_HOME=`cd "${APP_HOME:-.}" >/dev/null 2>&1 && pwd -P || exit 1`
+if ! command -v "$JAVA_EXE" >/dev/null 2>&1 ; then
+  die "ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH."
+fi
 
-# Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
-DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
-
-# Collect all arguments for the java command, stacking them in the command line.
-set -- \
-    -Dorg.gradle.appname="$APP_BASE_NAME" \
-    -classpath "$CLASSPATH" \
-    org.gradle.wrapper.GradleWrapperMain \
-    "$@"
-
-exec "$JAVA_HOME/bin/java" $DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS "$@"
+exec "$JAVA_EXE" $DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS -Dorg.gradle.appname="$APP_BASE_NAME" -classpath "$CLASSPATH" org.gradle.wrapper.GradleWrapperMain "$@"
