@@ -57,11 +57,14 @@ class FalsareeRepository(private val dao: FalsareeDao) {
      * Hybrid dispatch foundation: the next eligible driver is selected by the
      * configured shift queue. Busy, inactive, or forced-break drivers are skipped.
      */
-    suspend fun getNextEligibleDriver(shiftName: String): DriverProfileEntity? = withContext(Dispatchers.IO) {
+    suspend fun getNextEligibleDriver(
+        shiftName: String,
+        excludedDriverIds: Set<Long> = emptySet()
+    ): DriverProfileEntity? = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val assignments = dao.getActiveDriverShiftAssignments().firstOrNull()
             .orEmpty()
-            .filter { it.shiftName == shiftName && it.forcedBreakUntil <= now }
+            .filter { it.shiftName == shiftName && it.forcedBreakUntil <= now && it.driverId !in excludedDriverIds }
             .sortedBy { it.queuePosition }
         for (assignment in assignments) {
             val driver = dao.getDriverById(assignment.driverId) ?: continue
@@ -100,10 +103,13 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     suspend fun restoreDriverFromForcedBreak(driverId: Long) = withContext(Dispatchers.IO) {
         dao.getDriverShiftAssignment(driverId)?.let { assignment ->
-            dao.updateDriverShiftAssignment(assignment.copy(forcedBreakUntil = 0L, active = true))
+            dao.updateDriverShiftAssignment(assignment.copy(forcedBreakUntil = 0L, statusBeforeBreak = null, active = true, updatedAt = System.currentTimeMillis()))
         }
         dao.getDriverById(driverId)?.let { driver ->
-            if (driver.status == DriverStatus.BREAK) dao.updateDriver(driver.copy(status = DriverStatus.AVAILABLE))
+            if (driver.status == DriverStatus.BREAK) {
+                val previous = dao.getDriverShiftAssignment(driverId)?.statusBeforeBreak
+                dao.updateDriver(driver.copy(status = previous ?: DriverStatus.AVAILABLE))
+            }
         }
     }
 
@@ -111,7 +117,11 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         val assignment = dao.getDriverShiftAssignment(driverId)
             ?: return@withContext
         dao.updateDriverShiftAssignment(
-            assignment.copy(forcedBreakUntil = System.currentTimeMillis() + minutes.coerceAtLeast(1) * 60_000L)
+            assignment.copy(
+                forcedBreakUntil = System.currentTimeMillis() + minutes.coerceAtLeast(1) * 60_000L,
+                statusBeforeBreak = dao.getDriverById(driverId)?.status ?: assignment.statusBeforeBreak,
+                updatedAt = System.currentTimeMillis()
+            )
         )
         dao.getDriverById(driverId)?.let { driver ->
             dao.updateDriver(driver.copy(status = DriverStatus.BREAK))
@@ -146,7 +156,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             recordDriverDispatchEvent(orderId, driverId, "TIMEOUT", "انتهت مهلة قبول الطلب")
             updateDriverPerformance(driverId, "TIMEOUT")
             applyAutomaticPenaltyIfNeeded(orderId, driverId)
-            offerOrderToNextDriver(orderId, shiftName)
+            if (offer.eventType == "OFFERED") offerOrderToNextDriver(orderId, shiftName)
+            else Result.failure(IllegalStateException("انتهت مهلة عرض جماعي؛ لا يتم تشغيل Sequential تلقائيًا"))
         }
 
 
@@ -477,8 +488,9 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         withContext(Dispatchers.IO) {
             val order = dao.getOrderById(orderId)
                 ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
-            val driver = getNextEligibleDriver(shiftName)
-                ?: return@withContext Result.failure(IllegalStateException("لا يوجد مندوب متاح حاليًا"))
+            val excluded = dao.getSequentiallyProcessedDriverIds(orderId).toSet()
+            val driver = getNextEligibleDriver(shiftName, excluded)
+                ?: return@withContext Result.failure(IllegalStateException("لا يوجد مندوب مؤهل جديد حاليًا"))
             val timeout = (dao.getSettings().firstOrNull()?.driverOfferTimeoutSeconds ?: 30).coerceAtLeast(5)
             recordDriverDispatchEvent(orderId, driver.id, "OFFERED", "Sequential queue", System.currentTimeMillis() + timeout * 1000L)
             dao.getUserByAssociatedDriverId(driver.id)?.let { user ->
@@ -642,10 +654,12 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             if (!isDriverEligibleForDispatch(driverId, shiftName)) {
                 return@withContext Result.failure(IllegalStateException("المندوب غير مؤهل للتعامل مع العرض"))
             }
+            val offerType = offerValidation.getOrThrow().eventType
             recordDriverDispatchEvent(orderId, driverId, "REJECTED", reason)
             updateDriverPerformance(driverId, "REJECTED")
             applyAutomaticPenaltyIfNeeded(orderId, driverId)
-            offerOrderToNextDriver(orderId, shiftName)
+            if (offerType == "OFFERED") offerOrderToNextDriver(orderId, shiftName)
+            else Result.failure(IllegalStateException("تم رفض عرض جماعي؛ لا يتم تحويله تلقائيًا لمندوب آخر"))
         }
 
     suspend fun broadcastOrderToEligibleDrivers(orderId: Long, shiftName: String): Result<Int> =
