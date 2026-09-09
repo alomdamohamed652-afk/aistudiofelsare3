@@ -361,6 +361,10 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
 
+        if (driverId != null && current.driverId != null && current.driverId != driverId) {
+            return@withContext Result.failure(IllegalStateException("هذا الطلب ليس معينًا لهذا المندوب"))
+        }
+
         // Terminal protection: Cannot transition if already in a terminal state
         if (current.orderStatus in setOf(OrderStatus.DELIVERED, OrderStatus.REJECTED, OrderStatus.CANCELLED)) {
             return@withContext Result.failure(
@@ -476,7 +480,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 if (driver != null) {
                     dao.updateDriver(
                         driver.copy(
-                            status = DriverStatus.AVAILABLE,
+                            status = DriverStatus.OFFLINE,
                             todayEarnings = driver.todayEarnings + current.deliveryFee,
                             totalEarnings = driver.totalEarnings + current.deliveryFee,
                             completedOrdersCount = driver.completedOrdersCount + 1,
@@ -778,8 +782,10 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         val assignments = dao.getActiveDriverShiftAssignmentsSnapshot(shiftName)
         return assignments.sortedBy { it.queuePosition }.mapNotNull { assignment ->
             if (assignment.forcedBreakUntil > now) null
-            else dao.getDriverById(assignment.driverId)?.takeIf {
-                it.status == DriverStatus.AVAILABLE && it.currentOrderId == null
+            else dao.getDriverById(assignment.driverId)?.takeIf { driver ->
+                isActiveDriverAccount(dao.getUserByAssociatedDriverId(driver.id)) &&
+                    driver.status == DriverStatus.AVAILABLE &&
+                    driver.currentOrderId == null
             }
         }
     }
