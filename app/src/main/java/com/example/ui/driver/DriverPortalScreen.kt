@@ -141,7 +141,7 @@ fun DriverPortalScreen(
                                 1.dp,
                                 if (isAvailable) StatusGreen else Color.White.copy(alpha = 0.3f)
                             ),
-                            modifier = Modifier.clickable {
+                            modifier = Modifier.clickable(enabled = driver?.status in setOf(DriverStatus.OFFLINE, DriverStatus.AVAILABLE)) {
                                 onToggleAvailability(if (isAvailable) DriverStatus.OFFLINE else DriverStatus.AVAILABLE)
                             }
                         ) {
