@@ -110,8 +110,8 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     private val _cartItems = MutableStateFlow<Map<ProductEntity, Int>>(emptyMap())
     val cartItems: StateFlow<Map<ProductEntity, Int>> = _cartItems.asStateFlow()
 
-    private val _cartOptions = MutableStateFlow<Map<Long, String>>(emptyMap()) // productId to options text
-    val cartOptions: StateFlow<Map<Long, String>> = _cartOptions.asStateFlow()
+    private val _cartOptions = MutableStateFlow<Map<ProductEntity, String>>(emptyMap()) // configured product to options text
+    val cartOptions: StateFlow<Map<ProductEntity, String>> = _cartOptions.asStateFlow()
 
     private val _appliedCoupon = MutableStateFlow<CouponEntity?>(null)
     val appliedCoupon: StateFlow<CouponEntity?> = _appliedCoupon.asStateFlow()
@@ -263,7 +263,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             _alertMessage.value = "لا يمكن الطلب من شريكين مختلفين في نفس السلة. تم إفراغ السلة السابقة وبدء سلة جديدة من ${partner.name}."
             _cartPartner.value = partner
             _cartItems.value = mapOf(product to quantity)
-            _cartOptions.value = mapOf(product.id to optionsSummary)
+            _cartOptions.value = mapOf(product to optionsSummary)
             _appliedCoupon.value = null
             _discountAmount.value = 0.0
             return
@@ -277,7 +277,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
         if (optionsSummary.isNotEmpty()) {
             val optMap = _cartOptions.value.toMutableMap()
-            optMap[product.id] = optionsSummary
+            optMap[product] = optionsSummary
             _cartOptions.value = optMap
         }
         _alertMessage.value = "تمت إضافة ${product.name} إلى السلة ⚡"
@@ -290,7 +290,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         if (newQty <= 0) {
             currentMap.remove(product)
             val optMap = _cartOptions.value.toMutableMap()
-            optMap.remove(product.id)
+            optMap.remove(product)
             _cartOptions.value = optMap
         } else {
             currentMap[product] = newQty
@@ -335,8 +335,9 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         transferReceiptNote: String = ""
     ) {
         val partner = _cartPartner.value ?: return
-        val itemsList = _cartItems.value.map { Pair(it.key, it.value) }
-        val optionsSummary = _cartOptions.value.values.joinToString(", ")
+        val itemsList = _cartItems.value.map { (product, quantity) ->
+            Triple(product, quantity, _cartOptions.value[product].orEmpty())
+        }
 
         viewModelScope.launch {
             val customerId = currentSession.value?.associatedCustomerId
@@ -350,7 +351,6 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
                 customerPhone = customerPhone,
                 partner = partner,
                 items = itemsList,
-                optionsNotes = optionsSummary,
                 deliveryAddress = deliveryAddress,
                 customerNotes = customerNotes,
                 paymentMethod = paymentMethod,
