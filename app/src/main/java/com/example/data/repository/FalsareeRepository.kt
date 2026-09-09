@@ -507,6 +507,36 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             offerOrderToNextDriver(orderId, shiftName)
         }
 
+    suspend fun broadcastOrderToEligibleDrivers(orderId: Long, shiftName: String): Result<Int> =
+        withContext(Dispatchers.IO) {
+            val order = dao.getOrderById(orderId)
+                ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+            val eligible = getEligibleDrivers(shiftName)
+            if (eligible.isEmpty()) return@withContext Result.failure(IllegalStateException("لا يوجد مندوب متاح"))
+            val timeout = (dao.getSettings().firstOrNull()?.driverOfferTimeoutSeconds ?: 30).coerceAtLeast(5)
+            eligible.forEach { driver ->
+                recordDriverDispatchEvent(orderId, driver.id, "BROADCAST_OFFER", "Hybrid fallback", System.currentTimeMillis() + timeout * 1000L)
+                dao.getUserByAssociatedDriverId(driver.id)?.let { user ->
+                    dao.insertNotification(NotificationEntity(
+                        targetUserId = user.id,
+                        targetRole = UserRole.DRIVER,
+                        category = NotificationCategory.ORDER,
+                        title = "طلب متاح للجميع",
+                        message = "الطلب " + order.orderNumber + " متاح، أول قبول صحيح يحصل على التعيين.",
+                        relatedOrderId = orderId
+                    ))
+                }
+            }
+            Result.success(eligible.size)
+        }
+
+    private suspend fun getEligibleDrivers(shiftName: String): List<DriverProfileEntity> {
+        val assignments = dao.getActiveDriverShiftAssignmentsSnapshot(shiftName)
+        return assignments.sortedBy { it.queuePosition }.mapNotNull { assignment ->
+            dao.getDriverById(assignment.driverId)?.takeIf { it.status == DriverStatus.AVAILABLE }
+        }
+    }
+
     suspend fun assignDriverToOrder(
         orderId: Long,
         driver: DriverProfileEntity,
