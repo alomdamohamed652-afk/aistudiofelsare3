@@ -99,8 +99,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         customerName: String,
         customerPhone: String,
         partner: PartnerEntity,
-        items: List<Pair<ProductEntity, Int>>, // product to quantity
-        optionsNotes: String,
+        items: List<Triple<ProductEntity, Int, String>>, // product, quantity, selected options
         deliveryAddress: String,
         customerNotes: String,
         paymentMethod: PaymentMethod,
@@ -149,14 +148,14 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
             val orderId = dao.insertOrder(order)
 
-            val orderItems = items.map { (prod, qty) ->
+            val orderItems = items.map { (prod, qty, optionsSummary) ->
                 OrderItemEntity(
                     orderId = orderId,
                     productId = prod.id,
                     productName = prod.name,
                     quantity = qty,
                     unitPrice = prod.price,
-                    optionsSummary = optionsNotes,
+                    optionsSummary = optionsSummary,
                     totalPrice = prod.price * qty
                 )
             }
