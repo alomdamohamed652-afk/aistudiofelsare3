@@ -369,12 +369,11 @@ fun FalsareeApp(
                             val partnerProducts = activePartner?.let { partner ->
                                 products.filter { it.partnerId == partner.id }
                             } ?: emptyList()
-                            val partnerCategories by if (activePartner != null) {
-                                viewModel.repository.getCategoriesForPartner(activePartner.id)
-                                    .collectAsStateWithLifecycle(initialValue = emptyList())
-                            } else {
-                                remember { mutableStateOf(emptyList()) }
+                            val categoryFlow = remember(activePartner?.id) {
+                                activePartner?.let { viewModel.repository.getCategoriesForPartner(it.id) }
                             }
+                            val partnerCategories by categoryFlow?.collectAsStateWithLifecycle(initialValue = emptyList())
+                                ?: remember { mutableStateOf(emptyList()) }
 
                             if (activePartner == null) {
                                 Box(
