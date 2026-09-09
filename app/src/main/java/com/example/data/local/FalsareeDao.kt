@@ -18,6 +18,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1")
     suspend fun getUserByEmail(email: String): UserEntity?
 
+    @Query("SELECT * FROM users WHERE role = 'DRIVER' AND phone = :phone LIMIT 1")
+    suspend fun getDriverUserByPhone(phone: String): UserEntity?
+
     @Query("SELECT * FROM users WHERE associatedDriverId = :driverId LIMIT 1")
     suspend fun getUserByAssociatedDriverId(driverId: Long): UserEntity?
 
@@ -29,6 +32,9 @@ interface FalsareeDao {
 
     @Update
     suspend fun updateUser(user: UserEntity)
+
+    @Query("UPDATE users SET isActive = :active, activationStatus = :status, activationReason = :reason WHERE id = :userId")
+    suspend fun updateUserActivation(userId: Long, active: Boolean, status: String, reason: String = "")
 
     // --- Partners ---
     @Query("SELECT * FROM partners ORDER BY rating DESC")
