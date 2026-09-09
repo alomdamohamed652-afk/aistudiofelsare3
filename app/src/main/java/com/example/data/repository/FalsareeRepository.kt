@@ -573,6 +573,15 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         dao.deleteDriver(driver)
     }
 
+    suspend fun setAccountActivation(userId: Long, active: Boolean, reason: String = "") = withContext(Dispatchers.IO) {
+        dao.updateUserActivation(
+            userId = userId,
+            active = active,
+            status = if (active) "ACTIVE" else "SUSPENDED",
+            reason = reason
+        )
+    }
+
     suspend fun setDriverAvailability(driverId: Long, status: DriverStatus) = withContext(Dispatchers.IO) {
         val driver = dao.getDriverById(driverId) ?: return@withContext
         dao.updateDriver(driver.copy(status = status))
