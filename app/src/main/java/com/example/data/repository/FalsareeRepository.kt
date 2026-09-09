@@ -81,7 +81,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             shiftName = shiftName,
             queuePosition = queuePosition,
             active = true,
-            forcedBreakUntil = existing?.forcedBreakUntil ?: 0L
+            forcedBreakUntil = existing?.forcedBreakUntil ?: 0L,
+            statusBeforeBreak = existing?.statusBeforeBreak
         )
         if (existing == null) dao.insertDriverShiftAssignment(assignment) else dao.updateDriverShiftAssignment(assignment)
     }
@@ -102,13 +103,21 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     }
 
     suspend fun restoreDriverFromForcedBreak(driverId: Long) = withContext(Dispatchers.IO) {
-        dao.getDriverShiftAssignment(driverId)?.let { assignment ->
-            dao.updateDriverShiftAssignment(assignment.copy(forcedBreakUntil = 0L, statusBeforeBreak = null, active = true, updatedAt = System.currentTimeMillis()))
+        val assignment = dao.getDriverShiftAssignment(driverId)
+        val previousStatus = assignment?.statusBeforeBreak
+        assignment?.let {
+            dao.updateDriverShiftAssignment(
+                it.copy(
+                    forcedBreakUntil = 0L,
+                    statusBeforeBreak = null,
+                    active = true,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
         }
         dao.getDriverById(driverId)?.let { driver ->
             if (driver.status == DriverStatus.BREAK) {
-                val previous = dao.getDriverShiftAssignment(driverId)?.statusBeforeBreak
-                dao.updateDriver(driver.copy(status = previous ?: DriverStatus.AVAILABLE))
+                dao.updateDriver(driver.copy(status = previousStatus ?: DriverStatus.AVAILABLE))
             }
         }
     }
