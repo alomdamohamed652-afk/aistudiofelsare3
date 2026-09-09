@@ -271,3 +271,16 @@ data class DriverDispatchEventEntity(
     val expiresAt: Long = 0L,
     val createdAt: Long = System.currentTimeMillis()
 )
+
+
+@Entity(tableName = "driver_performance")
+data class DriverPerformanceEntity(
+    @PrimaryKey val driverId: Long,
+    val totalAccepted: Int = 0,
+    val totalRejected: Int = 0,
+    val totalTimeouts: Int = 0,
+    val consecutiveRejects: Int = 0,
+    val consecutiveTimeouts: Int = 0,
+    val lastPenaltyAt: Long = 0L,
+    val updatedAt: Long = System.currentTimeMillis()
+)
