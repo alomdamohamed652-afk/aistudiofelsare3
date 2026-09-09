@@ -601,6 +601,9 @@ fun AdminDriversTab(
     onDeleteDriver: (DriverProfileEntity) -> Unit,
     onForcedBreak: (Long, Int) -> Unit,
     onRestoreDriver: (Long) -> Unit,
+    shiftAssignments: List<DriverShiftAssignmentEntity>,
+    onAssignShift: (Long, String, Int) -> Unit,
+    onSetShiftActive: (Long, Boolean) -> Unit,
     driverAccounts: List<UserEntity>,
     onSetAccountActivation: (userId: Long, active: Boolean, reason: String) -> Unit
 ) {
@@ -626,6 +629,23 @@ fun AdminDriversTab(
                 }
             }
         }
+        item {
+            Text("الشيفتات والدور", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+        }
+        items(drivers) { driver ->
+            val assignment = shiftAssignments.firstOrNull { it.driverId == driver.id }
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(driver.name + " — " + (assignment?.shiftName ?: "بدون شيفت"), fontWeight = FontWeight.Bold)
+                    Text("ترتيب الدور: " + (assignment?.queuePosition?.toString() ?: "-"), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { onAssignShift(driver.id, assignment?.shiftName ?: "الصباح", (assignment?.queuePosition ?: 0) + 1) }, modifier = Modifier.weight(1f)) { Text("تعديل الشيفت/الدور") }
+                        OutlinedButton(onClick = { onSetShiftActive(driver.id, !(assignment?.active ?: false)) }, modifier = Modifier.weight(1f)) { Text(if (assignment?.active == true) "إيقاف من الدور" else "تفعيل في الدور") }
+                    }
+                }
+            }
+        }
+        item { HorizontalDivider() }
         items(drivers) { driver ->
             Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard), border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)) {
                 Column(modifier = Modifier.padding(14.dp)) {
