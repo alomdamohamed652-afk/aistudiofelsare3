@@ -519,6 +519,18 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun timeoutDriverOffer(orderId: Long, driverId: Long, shiftName: String) {
+        viewModelScope.launch {
+            repository.timeoutDriverOffer(orderId, driverId, shiftName)
+                .onFailure { error ->
+                    if (error.message?.contains("تم تعيينه بالفعل") != true &&
+                        error.message?.contains("عرض أحدث") != true) {
+                        _alertMessage.value = error.message ?: "تعذر معالجة انتهاء مهلة العرض"
+                    }
+                }
+        }
+    }
+
     fun updateDriverDeliveryStatus(order: OrderEntity, driver: DriverProfileEntity?, status: DeliveryStatus, reason: String) {
         val activeDriverId = currentSession.value?.associatedDriverId
         if (driver == null || activeDriverId != driver.id) {
