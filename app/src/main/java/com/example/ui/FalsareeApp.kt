@@ -198,12 +198,13 @@ fun FalsareeApp(
                                 },
                                 onApplyCoupon = { viewModel.applyCoupon(it) },
                                 onClearCart = { viewModel.clearCart() },
-                                onConfirmOrder = { addr, notes, pay, receipt ->
+                                onConfirmOrder = { addr, notes, pay, receiptNote, receiptUri ->
                                     viewModel.placeOrder(
                                         deliveryAddress = addr,
                                         customerNotes = notes,
                                         paymentMethod = pay,
-                                        transferReceiptNote = receipt
+                                        transferReceiptNote = receiptNote,
+                                        transferReceiptUri = receiptUri
                                     )
                                     showCartScreen = false
                                 },
