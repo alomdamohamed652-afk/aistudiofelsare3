@@ -89,10 +89,10 @@ enum class PaymentStatus(val titleArabic: String) {
 }
 
 enum class DriverStatus(val titleArabic: String) {
+    OFFLINE("غير متصل"),
     AVAILABLE("متاح للطلبات"),
     BUSY("في مهمة توصيل"),
-    OFFLINE("غير متاح"),
-    SUSPENDED("موقوف مؤقتًا")
+    BREAK("في استراحة")
 }
 
 enum class ProductStatus(val titleArabic: String) {
