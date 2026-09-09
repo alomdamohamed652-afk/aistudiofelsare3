@@ -269,12 +269,31 @@ fun DriverPortalScreen(
 fun DriverHomeScreen(
     activeOrder: OrderEntity?,
     openOrders: List<OrderEntity>,
+    offerExpiryByOrderId: Map<Long, Long> = emptyMap(),
+    onOfferTimeout: (OrderEntity) -> Unit = {},
     onAcceptOrder: (OrderEntity) -> Unit,
     onRejectOrder: (OrderEntity, String) -> Unit,
     onConfirmPickup: (OrderEntity) -> Unit,
     onConfirmDelivered: (OrderEntity) -> Unit
 ) {
     var rejectOrder by remember { mutableStateOf<OrderEntity?>(null) }
+    val now by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
+    openOrders.forEach { order ->
+        val expiresAt = offerExpiryByOrderId[order.id] ?: 0L
+        if (expiresAt > 0L) {
+            LaunchedEffect(order.id, expiresAt) {
+                val remaining = expiresAt - System.currentTimeMillis()
+                if (remaining > 0L) kotlinx.coroutines.delay(remaining)
+                onOfferTimeout(order)
+            }
+        }
+    }
 
     rejectOrder?.let { order ->
         val reasons = listOf("بعيد جدًا", "مشكلة بالمركبة", "نهاية الشيفت", "ظروف شخصية", "سبب آخر")
@@ -527,6 +546,17 @@ fun DriverHomeScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = TextSecondary
                         )
+
+                        val expiresAt = offerExpiryByOrderId[ord.id] ?: 0L
+                        if (expiresAt > 0L) {
+                            val remainingSeconds = ((expiresAt - now).coerceAtLeast(0L) + 999L) / 1000L
+                            Text(
+                                text = "متبقي لقبول العرض: ${remainingSeconds} ثانية",
+                                color = if (remainingSeconds <= 10) Color.Red else DriverPrimaryOrange,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
