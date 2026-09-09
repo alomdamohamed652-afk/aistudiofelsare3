@@ -46,6 +46,7 @@ fun AdminPortalScreen(
     onSaveOnboardingPage: (OnboardingPageEntity) -> Unit,
     onDeleteOnboardingPage: (OnboardingPageEntity) -> Unit,
     onToggleOnboardingEnabled: (Boolean) -> Unit,
+    onSaveAppSettings: (AppSettingsEntity) -> Unit,
     onSwitchRole: (UserRole) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -195,7 +196,8 @@ fun AdminPortalScreen(
                 6 -> AdminSettingsAndTransfersTab(
                     orders = orders,
                     appSettings = appSettings,
-                    onReviewTransfer = onReviewTransfer
+                    onReviewTransfer = onReviewTransfer,
+                    onSaveAppSettings = onSaveAppSettings
                 )
                 7 -> AdminActivityLogsTab(logs = activityLogs)
             }
@@ -860,8 +862,16 @@ fun AdminOnboardingTab(
 fun AdminSettingsAndTransfersTab(
     orders: List<OrderEntity>,
     appSettings: AppSettingsEntity?,
-    onReviewTransfer: (orderId: Long, isApproved: Boolean, reason: String) -> Unit
+    onReviewTransfer: (orderId: Long, isApproved: Boolean, reason: String) -> Unit,
+    onSaveAppSettings: (AppSettingsEntity) -> Unit
 ) {
+    val settings = appSettings ?: AppSettingsEntity()
+    var baseDeliveryFee by remember(settings) { mutableStateOf(settings.baseDeliveryFee.toString()) }
+    var pricePerKm by remember(settings) { mutableStateOf(settings.pricePerKm.toString()) }
+    var minimumOrderAmount by remember(settings) { mutableStateOf(settings.minimumOrderAmount.toString()) }
+    var extraPickupFee by remember(settings) { mutableStateOf(settings.extraPickupFee.toString()) }
+    var driverOfferTimeout by remember(settings) { mutableStateOf(settings.driverOfferTimeoutSeconds.toString()) }
+    var busyDriversOpenDispatch by remember(settings) { mutableStateOf(settings.busyDriversOpenDispatch) }
     val pendingTransfers = remember(orders) {
         orders.filter { it.paymentMethod == PaymentMethod.BANK_TRANSFER && it.paymentStatus == PaymentStatus.PENDING_VERIFICATION }
     }
@@ -939,23 +949,36 @@ fun AdminSettingsAndTransfersTab(
             }
         }
 
-        // Global Workflow Configuration
         item {
             Spacer(modifier = Modifier.height(12.dp))
-            Text("إعدادات سير العمل العام (Workflow Settings) ⚙️", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("إعدادات التسعير والتشغيل ⚙️", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
-
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("• نمط التوزيع الافتراضي: طلب مفتوح لجميع المناديب ⚡", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    Text("• آلية اعتماد الطلبات الافتراضية: اعتماد من الشريك", style = MaterialTheme.typography.bodyMedium)
-                    Text("• توقيت انطلاق المندوب: عند بدء التجهيز بالمطبخ", style = MaterialTheme.typography.bodyMedium)
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard), border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("التسعير الأساسي", fontWeight = FontWeight.Bold)
+                    AppInput(value = baseDeliveryFee, onValueChange = { baseDeliveryFee = it }, label = "سعر بداية التوصيل (ج.م)", modifier = Modifier.fillMaxWidth())
+                    AppInput(value = pricePerKm, onValueChange = { pricePerKm = it }, label = "سعر الكيلو الإضافي (ج.م)", modifier = Modifier.fillMaxWidth())
+                    AppInput(value = minimumOrderAmount, onValueChange = { minimumOrderAmount = it }, label = "الحد الأدنى للطلب (0 = بدون حد)", modifier = Modifier.fillMaxWidth())
+                    AppInput(value = extraPickupFee, onValueChange = { extraPickupFee = it }, label = "رسوم كل جهة استلام إضافية (ج.م)", modifier = Modifier.fillMaxWidth())
+                    Divider()
+                    Text("توزيع الطلبات", fontWeight = FontWeight.Bold)
+                    AppInput(value = driverOfferTimeout, onValueChange = { driverOfferTimeout = it.filter(Char::isDigit) }, label = "مهلة قبول المندوب بالثواني", modifier = Modifier.fillMaxWidth())
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = busyDriversOpenDispatch, onCheckedChange = { busyDriversOpenDispatch = it })
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("عند انشغال جميع المناديب: عرض الطلب للجميع")
+                    }
+                    AppButton(text = "حفظ إعدادات التشغيل 💾", onClick = {
+                        onSaveAppSettings(settings.copy(
+                            baseDeliveryFee = baseDeliveryFee.toDoubleOrNull() ?: settings.baseDeliveryFee,
+                            pricePerKm = pricePerKm.toDoubleOrNull() ?: settings.pricePerKm,
+                            minimumOrderAmount = minimumOrderAmount.toDoubleOrNull() ?: settings.minimumOrderAmount,
+                            extraPickupFee = extraPickupFee.toDoubleOrNull() ?: settings.extraPickupFee,
+                            driverOfferTimeoutSeconds = (driverOfferTimeout.toIntOrNull() ?: settings.driverOfferTimeoutSeconds).coerceAtLeast(5),
+                            busyDriversOpenDispatch = busyDriversOpenDispatch
+                        ))
+                    }, modifier = Modifier.fillMaxWidth())
                 }
             }
         }
