@@ -56,6 +56,13 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val favoritePartnerIds: Flow<List<Long>> = dao.getFavoritePartnerIds()
     fun getFavoritePartnerIdsForCustomer(customerId: Long): Flow<List<Long>> = dao.getFavoritePartnerIdsForCustomer(customerId)
     val driverPayoutRequests: Flow<List<DriverPayoutRequestEntity>> = dao.getAllPayoutRequests()
+
+    fun activeDriverOfferEvents(driverId: Long): Flow<List<DriverDispatchEventEntity>> =
+        dao.getActiveDriverOffers(driverId, System.currentTimeMillis())
+
+    val driverShiftAssignments: Flow<List<DriverShiftAssignmentEntity>> =
+        dao.getAllDriverShiftAssignments()
+
     val driverShiftAssignments: Flow<List<DriverShiftAssignmentEntity>> = dao.getAllDriverShiftAssignments()
 
     /**
