@@ -565,7 +565,7 @@ fun CustomerPortalView(
     products: List<com.example.data.local.ProductEntity>,
     cartPartner: com.example.data.local.PartnerEntity?,
     cartItems: Map<com.example.data.local.ProductEntity, Int>,
-    cartOptions: Map<Long, String>,
+    cartOptions: Map<com.example.data.local.ProductEntity, String>,
     appliedCoupon: com.example.data.local.CouponEntity?,
     discountAmount: Double,
     addresses: List<com.example.data.local.CustomerAddressEntity>,
