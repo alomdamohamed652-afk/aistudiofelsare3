@@ -36,7 +36,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     private val _isOnboardingCompleted = MutableStateFlow(false)
     val isOnboardingCompleted: StateFlow<Boolean> = _isOnboardingCompleted.asStateFlow()
 
-    // Customer Navigation Tab (0: Home, 1: Explore, 2: Orders, 3: Favorites, 4: Profile)
+    // Customer Navigation Tab (0: Home, 1: Search, 2: Favorites, 3: Orders, 4: Profile)
     private val _customerSelectedTab = MutableStateFlow(0)
     val customerSelectedTab: StateFlow<Int> = _customerSelectedTab.asStateFlow()
 
@@ -350,7 +350,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             res.onSuccess { orderId ->
                 clearCart()
                 _trackedOrderId.value = orderId
-                _customerSelectedTab.value = 2
+                _customerSelectedTab.value = 3
                 _selectedPartner.value = null
                 _alertMessage.value = "تم تأكيد طلبك بنجاح! يوصلك فالسريع ⚡"
             }.onFailure { error ->
