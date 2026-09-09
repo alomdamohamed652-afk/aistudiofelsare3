@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
 import com.example.core.designsystem.*
-import com.example.BuildConfig
 import com.example.core.model.OrderStatus
 import com.example.core.model.ProductStatus
 import com.example.core.model.UserRole
