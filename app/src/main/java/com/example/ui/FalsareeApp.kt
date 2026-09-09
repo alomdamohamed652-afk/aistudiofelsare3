@@ -259,6 +259,9 @@ fun FalsareeApp(
                                         )
                                     }
                                 },
+                                onSaveSettings = { settings ->
+                                    coroutineScope.launch { viewModel.repository.saveSettings(settings) }
+                                },
                                 onTogglePartnerStatus = { id, isOpen ->
                                     coroutineScope.launch {
                                         viewModel.repository.setPartnerOpenStatus(id, isOpen)
