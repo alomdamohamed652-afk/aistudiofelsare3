@@ -327,35 +327,48 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun placeOrder(
-        customerName: String = "عميل فالسريع",
-        customerPhone: String = "01000000000",
         deliveryAddress: String,
         customerNotes: String = "",
         paymentMethod: PaymentMethod,
         transferReceiptNote: String = ""
     ) {
-        val partner = _cartPartner.value ?: return
+        val partner = _cartPartner.value
         val itemsList = _cartItems.value.map { Pair(it.key, it.value) }
-        val optionsSummary = _cartOptions.value.values.joinToString(", ")
+
+        if (partner == null || itemsList.isEmpty()) {
+            _alertMessage.value = "السلة فارغة، أضف منتجًا واحدًا على الأقل"
+            return
+        }
+        if (deliveryAddress.isBlank()) {
+            _alertMessage.value = "اختر عنوان التوصيل أولًا"
+            return
+        }
+        if (paymentMethod == PaymentMethod.BANK_TRANSFER && transferReceiptNote.isBlank()) {
+            _alertMessage.value = "أضف إثبات التحويل قبل تأكيد الطلب"
+            return
+        }
 
         viewModelScope.launch {
-            val customerId = currentSession.value?.associatedCustomerId
-            if (customerId == null) {
-                _alertMessage.value = "يجب تسجيل الدخول لإرسال الطلب"
+            val session = currentSession.value
+            val customerId = session?.associatedCustomerId
+            if (session == null || customerId == null) {
+                _alertMessage.value = "يجب تسجيل الدخول بحساب عميل لإرسال الطلب"
                 return@launch
             }
+
+            val optionsSummary = _cartOptions.value.values.joinToString(", ")
             val res = repository.placeOrder(
                 customerId = customerId,
-                customerName = customerName,
-                customerPhone = customerPhone,
+                customerName = session.name,
+                customerPhone = session.phone,
                 partner = partner,
                 items = itemsList,
                 optionsNotes = optionsSummary,
-                deliveryAddress = deliveryAddress,
-                customerNotes = customerNotes,
+                deliveryAddress = deliveryAddress.trim(),
+                customerNotes = customerNotes.trim(),
                 paymentMethod = paymentMethod,
                 appliedDiscount = _discountAmount.value,
-                transferReceiptNote = transferReceiptNote
+                transferReceiptNote = transferReceiptNote.trim()
             )
             res.onSuccess { orderId ->
                 clearCart()
