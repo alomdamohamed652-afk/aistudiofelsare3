@@ -530,6 +530,18 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     }
 
     // --- Driver Profile Operations ---
+    suspend fun addDriver(driver: DriverProfileEntity): Long = withContext(Dispatchers.IO) {
+        dao.insertDriver(driver)
+    }
+
+    suspend fun updateDriverProfile(driver: DriverProfileEntity) = withContext(Dispatchers.IO) {
+        dao.updateDriver(driver)
+    }
+
+    suspend fun deleteDriverProfile(driver: DriverProfileEntity) = withContext(Dispatchers.IO) {
+        dao.deleteDriver(driver)
+    }
+
     suspend fun setDriverAvailability(driverId: Long, status: DriverStatus) = withContext(Dispatchers.IO) {
         val driver = dao.getDriverById(driverId) ?: return@withContext
         dao.updateDriver(driver.copy(status = status))
