@@ -168,6 +168,12 @@ interface FalsareeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDrivers(drivers: List<DriverProfileEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDriver(driver: DriverProfileEntity): Long
+
+    @Delete
+    suspend fun deleteDriver(driver: DriverProfileEntity)
+
     @Update
     suspend fun updateDriver(driver: DriverProfileEntity)
 
