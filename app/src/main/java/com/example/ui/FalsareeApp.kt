@@ -351,17 +351,11 @@ fun FalsareeApp(
                         }
 
                         UserRole.PARTNER -> {
- fix/identity-hardening
                             // Partner identity must come from the authenticated session.
                             val activePartner = activePartnerId?.let { id -> partners.find { it.id == id } }
                             val partnerProducts = activePartner?.let { partner ->
                                 products.filter { it.partnerId == partner.id }
                             } ?: emptyList()
-
-                            // Resolve partner strictly from the authenticated session identity.
-                            val activePartner = activePartnerId?.let { id -> partners.find { it.id == id } }
-                            val partnerProducts = products.filter { it.partnerId == activePartner?.id }
- main
 
                             if (activePartner == null) {
                                 Box(
