@@ -10,6 +10,7 @@ import androidx.room.TypeConverters
     entities = [
         UserEntity::class,
         PartnerEntity::class,
+        PartnerCategoryEntity::class,
         ProductEntity::class,
         OrderEntity::class,
         OrderItemEntity::class,
@@ -26,7 +27,7 @@ import androidx.room.TypeConverters
         OrderReviewEntity::class,
         DriverPayoutRequestEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(FalsareeTypeConverters::class)
