@@ -32,7 +32,7 @@ import com.example.data.local.ProductEntity
 fun CartCheckoutScreen(
     partner: PartnerEntity?,
     cartItems: Map<ProductEntity, Int>,
-    cartOptions: Map<Long, String>,
+    cartOptions: Map<ProductEntity, String>,
     appliedCoupon: CouponEntity?,
     discountAmount: Double,
     addresses: List<CustomerAddressEntity>,
@@ -188,7 +188,7 @@ fun CartCheckoutScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(product.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                val opt = cartOptions[product.id]
+                                val opt = cartOptions[product]
                                 if (!opt.isNullOrEmpty()) {
                                     Text(opt, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                                 }
