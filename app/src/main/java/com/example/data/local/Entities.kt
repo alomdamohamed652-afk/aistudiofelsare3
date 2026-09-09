@@ -265,5 +265,6 @@ data class DriverDispatchEventEntity(
     val driverId: Long,
     val eventType: String, // OFFERED, ACCEPTED, REJECTED, TIMEOUT, AUTO_SKIPPED
     val reason: String = "",
+    val expiresAt: Long = 0L,
     val createdAt: Long = System.currentTimeMillis()
 )
