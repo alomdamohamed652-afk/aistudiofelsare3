@@ -377,10 +377,6 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
 
-        if (driverId != null && current.driverId != null && current.driverId != driverId) {
-            return@withContext Result.failure(IllegalStateException("هذا الطلب ليس معينًا لهذا المندوب"))
-        }
-
         // Terminal protection: Cannot transition if already in a terminal state
         if (current.orderStatus in setOf(OrderStatus.DELIVERED, OrderStatus.REJECTED, OrderStatus.CANCELLED)) {
             return@withContext Result.failure(
