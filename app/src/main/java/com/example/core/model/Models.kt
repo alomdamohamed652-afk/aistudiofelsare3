@@ -65,9 +65,9 @@ enum class DeliveryStatus(val titleArabic: String) {
 }
 
 enum class DispatchMode(val titleArabic: String, val descriptionArabic: String) {
-    OPEN_DISPATCH("طلب مفتوح للجميع", "يظهر الطلب لجميع المناديب المتاحين للاختيار السريع"),
-    ROUND_ROBIN("توزيع دوري", "يُعرض الطلب على مندوب واحد تلو الآخر بالتتابع"),
-    MANUAL_ASSIGNMENT("تعيين يدوي من الإدارة", "يقوم الأدمن باختيار المندوب يدويًا")
+    SEQUENTIAL("توزيع بالتتابع", "يُعرض الطلب على المندوبين المؤهلين واحدًا تلو الآخر حسب الدور"),
+    HYBRID("توزيع هجين", "يبدأ بالتتابع ثم يتحول إلى العرض الجماعي عند عدم وجود مندوب مؤهل"),
+    BROADCAST("عرض جماعي", "يظهر الطلب لجميع المندوبين المؤهلين وأول قبول صحيح يفوز بالتعيين")
 }
 
 enum class ApprovalWorkflow(val titleArabic: String) {
@@ -89,10 +89,10 @@ enum class PaymentStatus(val titleArabic: String) {
 }
 
 enum class DriverStatus(val titleArabic: String) {
+    OFFLINE("غير متصل"),
     AVAILABLE("متاح للطلبات"),
     BUSY("في مهمة توصيل"),
-    OFFLINE("غير متاح"),
-    SUSPENDED("موقوف مؤقتًا")
+    BREAK("في استراحة")
 }
 
 enum class ProductStatus(val titleArabic: String) {

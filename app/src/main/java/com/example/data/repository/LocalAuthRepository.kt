@@ -1,5 +1,7 @@
 ﻿package com.example.data.repository
 
+
+import android.content.Context
 import com.example.core.model.AuthState
 import com.example.core.model.UserRole
 import com.example.core.model.UserSession
@@ -20,8 +22,11 @@ import java.util.Base64
  * Supports persistent local sessions, real user creation, and isolated development role switching.
  */
 class LocalAuthRepository(
+    context: Context,
     private val dao: FalsareeDao
 ) : AuthRepository {
+
+    private val sessionStore = LocalSessionStore(context)
 
     private val _currentSession = MutableStateFlow<UserSession?>(null)
     override val currentSession: StateFlow<UserSession?> = _currentSession.asStateFlow()
@@ -39,6 +44,13 @@ class LocalAuthRepository(
         if (existingUser != null && !verifyPassword(password, existingUser.passwordSalt, existingUser.passwordHash)) {
             return@withContext Result.failure(IllegalArgumentException("بيانات تسجيل الدخول غير صحيحة"))
         }
+        if (existingUser != null && !existingUser.isActive) {
+            return@withContext Result.failure(IllegalStateException(
+                if (existingUser.activationStatus == "PENDING_ACTIVATION")
+                    "تم إنشاء الحساب وبانتظار تفعيل الإدارة"
+                else "الحساب غير نشط. تواصل مع الإدارة"
+            ))
+        }
         val session = existingUser?.let {
             UserSession(
                 userId = it.id,
@@ -54,8 +66,7 @@ class LocalAuthRepository(
             IllegalArgumentException("لا يوجد حساب مسجل بهذا الرقم")
         )
 
-        _currentSession.value = session
-        _authState.value = AuthState.Authenticated(session)
+        persistAuthenticatedSession(session)
         Result.success(session)
     }
 
@@ -79,6 +90,12 @@ class LocalAuthRepository(
                     IllegalArgumentException("يوجد حساب مسجل بهذا الهاتف أو البريد الإلكتروني")
                 )
             }
+            if (role == UserRole.DRIVER) {
+                val driverProfile = dao.getDriverByPhone(normalizedPhone)
+                    ?: return@withContext Result.failure(
+                        IllegalStateException("رقم الهاتف غير مسجل لدى الإدارة كمندوب. تواصل مع الإدارة أولاً")
+                    )
+            }
             val salt = generateSalt()
             val userId = dao.insertUser(
                 UserEntity(
@@ -87,7 +104,9 @@ class LocalAuthRepository(
                     email = normalizedEmail,
                     passwordHash = hashPassword(password, salt),
                     passwordSalt = salt,
-                    role = role
+                    role = role,
+                    isActive = role != UserRole.DRIVER,
+                    activationStatus = if (role == UserRole.DRIVER) "PENDING_ACTIVATION" else "ACTIVE"
                 )
             )
 
@@ -100,8 +119,7 @@ class LocalAuthRepository(
                 associatedCustomerId = if (role == UserRole.CUSTOMER) userId else null
             )
 
-            _currentSession.value = session
-            _authState.value = AuthState.Authenticated(session)
+            persistAuthenticatedSession(session)
             Result.success(session)
         } catch (e: Exception) {
             Result.failure(e)
@@ -109,6 +127,7 @@ class LocalAuthRepository(
     }
 
     override suspend fun logout() {
+        sessionStore.clear()
         _currentSession.value = null
         _authState.value = AuthState.Unauthenticated
     }
@@ -121,13 +140,43 @@ class LocalAuthRepository(
             associatedCustomerId = if (role == UserRole.CUSTOMER) current.userId else current.associatedCustomerId
         )
 
-        _currentSession.value = updated
-        _authState.value = AuthState.Authenticated(updated)
+        persistAuthenticatedSession(updated)
         return updated
     }
 
-    override suspend fun restoreSession(): UserSession? {
-        return _currentSession.value
+    override suspend fun restoreSession(): UserSession? = withContext(Dispatchers.IO) {
+        val restored = sessionStore.restore()
+        if (restored == null) {
+            _currentSession.value = null
+            _authState.value = AuthState.Unauthenticated
+            return@withContext null
+        }
+
+        val user = dao.getUserById(restored.userId)
+        if (user == null) {
+            sessionStore.clear()
+            _currentSession.value = null
+            _authState.value = AuthState.Unauthenticated
+            return@withContext null
+        }
+
+        val session = restored.copy(
+            name = user.name,
+            phone = user.phone,
+            email = user.email,
+            role = user.role,
+            associatedCustomerId = if (user.role == UserRole.CUSTOMER) user.id else null,
+            associatedDriverId = user.associatedDriverId,
+            associatedPartnerId = user.associatedPartnerId
+        )
+        persistAuthenticatedSession(session)
+        session
+    }
+
+    private fun persistAuthenticatedSession(session: UserSession) {
+        sessionStore.save(session)
+        _currentSession.value = session
+        _authState.value = AuthState.Authenticated(session)
     }
 
     private fun generateSalt(): String = ByteArray(16).also(SecureRandom()::nextBytes)

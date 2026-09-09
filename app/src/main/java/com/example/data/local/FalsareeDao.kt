@@ -18,17 +18,26 @@ interface FalsareeDao {
     @Query("SELECT * FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1")
     suspend fun getUserByEmail(email: String): UserEntity?
 
+    @Query("SELECT * FROM users WHERE role = 'DRIVER' AND phone = :phone LIMIT 1")
+    suspend fun getDriverUserByPhone(phone: String): UserEntity?
+
     @Query("SELECT * FROM users WHERE associatedDriverId = :driverId LIMIT 1")
     suspend fun getUserByAssociatedDriverId(driverId: Long): UserEntity?
 
     @Query("SELECT * FROM users WHERE associatedPartnerId = :partnerId LIMIT 1")
     suspend fun getUserByAssociatedPartnerId(partnerId: Long): UserEntity?
 
+    @Query("SELECT * FROM users WHERE role = 'DRIVER' ORDER BY createdAt DESC")
+    fun getAllDriverUsers(): Flow<List<UserEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUser(user: UserEntity): Long
 
     @Update
     suspend fun updateUser(user: UserEntity)
+
+    @Query("UPDATE users SET isActive = :active, activationStatus = :status, activationReason = :reason WHERE id = :userId")
+    suspend fun updateUserActivation(userId: Long, active: Boolean, status: String, reason: String = "")
 
     // --- Partners ---
     @Query("SELECT * FROM partners ORDER BY rating DESC")
@@ -165,8 +174,17 @@ interface FalsareeDao {
     @Query("SELECT * FROM drivers WHERE id = :id")
     suspend fun getDriverById(id: Long): DriverProfileEntity?
 
+    @Query("SELECT * FROM drivers WHERE phone = :phone LIMIT 1")
+    suspend fun getDriverByPhone(phone: String): DriverProfileEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDrivers(drivers: List<DriverProfileEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDriver(driver: DriverProfileEntity): Long
+
+    @Delete
+    suspend fun deleteDriver(driver: DriverProfileEntity)
 
     @Update
     suspend fun updateDriver(driver: DriverProfileEntity)
@@ -267,4 +285,66 @@ interface FalsareeDao {
 
     @Query("SELECT * FROM driver_payout_requests ORDER BY createdAt DESC")
     fun getAllPayoutRequests(): Flow<List<DriverPayoutRequestEntity>>
+    // --- Driver shifts & dispatch ---
+    @Query("SELECT * FROM driver_shift_assignments WHERE active = 1 ORDER BY shiftName, queuePosition")
+    fun getActiveDriverShiftAssignments(): Flow<List<DriverShiftAssignmentEntity>>
+
+    @Query("SELECT * FROM driver_shift_assignments WHERE active = 1 AND shiftName = :shiftName ORDER BY queuePosition")
+    suspend fun getActiveDriverShiftAssignmentsSnapshot(shiftName: String): List<DriverShiftAssignmentEntity>
+
+    @Query("SELECT * FROM driver_shift_assignments WHERE driverId = :driverId LIMIT 1")
+    suspend fun getDriverShiftAssignment(driverId: Long): DriverShiftAssignmentEntity?
+
+    @Query("SELECT * FROM driver_shift_assignments ORDER BY shiftName, queuePosition")
+    fun getAllDriverShiftAssignments(): Flow<List<DriverShiftAssignmentEntity>>
+
+    @Query("SELECT * FROM driver_shift_assignments WHERE shiftName = :shiftName ORDER BY queuePosition")
+    fun getDriverShiftAssignmentsForShift(shiftName: String): Flow<List<DriverShiftAssignmentEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDriverShiftAssignment(assignment: DriverShiftAssignmentEntity): Long
+
+    @Update
+    suspend fun updateDriverShiftAssignment(assignment: DriverShiftAssignmentEntity)
+
+    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId ORDER BY createdAt ASC")
+    fun getDispatchEventsForOrder(orderId: Long): Flow<List<DriverDispatchEventEntity>>
+
+    @Query("SELECT * FROM driver_dispatch_events WHERE driverId = :driverId AND eventType IN ('OFFERED', 'BROADCAST_OFFER') AND expiresAt > :now AND id = (SELECT MAX(e2.id) FROM driver_dispatch_events e2 WHERE e2.orderId = driver_dispatch_events.orderId AND e2.driverId = :driverId) ORDER BY createdAt DESC")
+    fun getActiveDriverOffers(driverId: Long, now: Long): Flow<List<DriverDispatchEventEntity>>
+
+
+    @Query("SELECT COUNT(*) FROM driver_dispatch_events WHERE driverId = :driverId AND eventType = :eventType")
+    suspend fun countDriverDispatchEvents(driverId: Long, eventType: String): Int
+
+    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND driverId = :driverId ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getLatestDriverEvent(orderId: Long, driverId: Long): DriverDispatchEventEntity?
+
+    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND driverId = :driverId AND eventType IN ('OFFERED', 'BROADCAST_OFFER') ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getLatestDriverOffer(orderId: Long, driverId: Long): DriverDispatchEventEntity?
+
+    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND eventType IN ('OFFERED', 'BROADCAST_OFFER') ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getLatestOrderOffer(orderId: Long): DriverDispatchEventEntity?
+
+    @Query("SELECT * FROM driver_shift_assignments WHERE forcedBreakUntil > 0 AND forcedBreakUntil <= :now")
+    suspend fun getExpiredForcedBreakAssignments(now: Long): List<DriverShiftAssignmentEntity>
+
+    @Query("SELECT DISTINCT driverId FROM driver_dispatch_events WHERE orderId = :orderId AND eventType IN ('OFFERED', 'REJECTED', 'TIMEOUT')")
+    suspend fun getSequentiallyProcessedDriverIds(orderId: Long): List<Long>
+
+    @Query("UPDATE orders SET driverId = :driverId, driverName = :driverName, driverPhone = :driverPhone, deliveryStatus = 'DRIVER_ASSIGNED', updatedAt = :updatedAt WHERE id = :orderId AND driverId IS NULL AND deliveryStatus = 'WAITING_FOR_DRIVER' AND orderStatus NOT IN ('CANCELLED', 'REJECTED', 'DELIVERED')")
+    suspend fun claimUnassignedOrder(orderId: Long, driverId: Long, driverName: String, driverPhone: String, updatedAt: Long): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDriverDispatchEvent(event: DriverDispatchEventEntity): Long
+
+    @Query("SELECT * FROM driver_performance WHERE driverId = :driverId LIMIT 1")
+    suspend fun getDriverPerformance(driverId: Long): DriverPerformanceEntity?
+
+    @Query("SELECT * FROM driver_performance WHERE driverId = :driverId LIMIT 1")
+    fun observeDriverPerformance(driverId: Long): Flow<DriverPerformanceEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDriverPerformance(performance: DriverPerformanceEntity)
+
 }

@@ -15,6 +15,9 @@ data class UserEntity(
     val role: UserRole = UserRole.CUSTOMER,
     val associatedDriverId: Long? = null,
     val associatedPartnerId: Long? = null,
+    val isActive: Boolean = true,
+    val activationStatus: String = "ACTIVE",
+    val activationReason: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -64,10 +67,11 @@ data class OrderEntity(
     val driverPhone: String? = null,
     val orderStatus: OrderStatus = OrderStatus.CREATED,
     val deliveryStatus: DeliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER,
-    val dispatchMode: DispatchMode = DispatchMode.OPEN_DISPATCH,
+    val dispatchMode: DispatchMode = DispatchMode.SEQUENTIAL,
     val paymentMethod: PaymentMethod = PaymentMethod.CASH_ON_DELIVERY,
     val paymentStatus: PaymentStatus = PaymentStatus.PENDING,
     val transferReceiptNote: String = "",
+    val transferReceiptUri: String = "",
     val deliveryAddress: String,
     val subtotal: Double,
     val deliveryFee: Double,
@@ -197,8 +201,18 @@ data class AppSettingsEntity(
     @PrimaryKey val id: Int = 1,
     val onboardingEnabled: Boolean = true,
     val defaultApproval: ApprovalWorkflow = ApprovalWorkflow.PARTNER,
-    val defaultDispatchMode: DispatchMode = DispatchMode.OPEN_DISPATCH,
-    val dispatchTriggerTiming: String = "عند بدء التجهيز"
+    val defaultDispatchMode: DispatchMode = DispatchMode.SEQUENTIAL,
+    val dispatchTriggerTiming: String = "عند بدء التجهيز",
+    val baseDeliveryFee: Double = 20.0,
+    val pricePerKm: Double = 5.0,
+    val minimumOrderAmount: Double = 0.0,
+    val extraPickupFee: Double = 10.0,
+    val freeDeliveryThreshold: Double = 0.0,
+    val driverOfferTimeoutSeconds: Int = 30,
+    val busyDriversOpenDispatch: Boolean = true,
+    val maxRejectsBeforeBreak: Int = 3,
+    val maxTimeoutsBeforeBreak: Int = 3,
+    val automaticPenaltyBreakMinutes: Int = 30
 )
 
 @Entity(tableName = "favorite_partners")
@@ -235,3 +249,39 @@ data class DriverPayoutRequestEntity(
             else -> "قيد المراجعة ⏳"
         }
 }
+
+@Entity(tableName = "driver_shift_assignments")
+data class DriverShiftAssignmentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val driverId: Long,
+    val shiftName: String,
+    val queuePosition: Int,
+    val active: Boolean = true,
+    val forcedBreakUntil: Long = 0L,
+    val statusBeforeBreak: DriverStatus? = null,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "driver_dispatch_events")
+data class DriverDispatchEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val orderId: Long,
+    val driverId: Long,
+    val eventType: String, // OFFERED, ACCEPTED, REJECTED, TIMEOUT, AUTO_SKIPPED
+    val reason: String = "",
+    val expiresAt: Long = 0L,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+
+@Entity(tableName = "driver_performance")
+data class DriverPerformanceEntity(
+    @PrimaryKey val driverId: Long,
+    val totalAccepted: Int = 0,
+    val totalRejected: Int = 0,
+    val totalTimeouts: Int = 0,
+    val consecutiveRejects: Int = 0,
+    val consecutiveTimeouts: Int = 0,
+    val lastPenaltyAt: Long = 0L,
+    val updatedAt: Long = System.currentTimeMillis()
+)

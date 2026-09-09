@@ -14,6 +14,11 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
+    private class NoEligibleDriverException(message: String) : IllegalStateException(message)
+
+    private fun isActiveDriverAccount(user: UserEntity?): Boolean =
+        user != null && user.role == UserRole.DRIVER && user.isActive && user.activationStatus == "ACTIVE"
+
     // --- Flows ---
     val allPartners: Flow<List<PartnerEntity>> = dao.getAllPartners()
     fun getPartnersByType(type: PartnerType): Flow<List<PartnerEntity>> = dao.getPartnersByType(type)
@@ -51,6 +56,168 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val favoritePartnerIds: Flow<List<Long>> = dao.getFavoritePartnerIds()
     fun getFavoritePartnerIdsForCustomer(customerId: Long): Flow<List<Long>> = dao.getFavoritePartnerIdsForCustomer(customerId)
     val driverPayoutRequests: Flow<List<DriverPayoutRequestEntity>> = dao.getAllPayoutRequests()
+
+    fun observeDriverPerformance(driverId: Long): Flow<DriverPerformanceEntity?> =
+        dao.observeDriverPerformance(driverId)
+
+    fun activeDriverOfferEvents(driverId: Long): Flow<List<DriverDispatchEventEntity>> =
+        dao.getActiveDriverOffers(driverId, System.currentTimeMillis())
+
+    val driverShiftAssignments: Flow<List<DriverShiftAssignmentEntity>> =
+        dao.getAllDriverShiftAssignments()
+
+    /**
+     * Hybrid dispatch foundation: the next eligible driver is selected by the
+     * configured shift queue. Busy, inactive, or forced-break drivers are skipped.
+     */
+    suspend fun getNextEligibleDriver(
+        shiftName: String,
+        excludedDriverIds: Set<Long> = emptySet()
+    ): DriverProfileEntity? = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        normalizeExpiredDriverBreaks(now)
+        val assignments = dao.getActiveDriverShiftAssignments().firstOrNull()
+            .orEmpty()
+            .filter { it.shiftName == shiftName && it.forcedBreakUntil <= now && it.driverId !in excludedDriverIds }
+            .sortedBy { it.queuePosition }
+        for (assignment in assignments) {
+            val driver = dao.getDriverById(assignment.driverId) ?: continue
+            val user = dao.getUserByAssociatedDriverId(driver.id)
+            if (isActiveDriverAccount(user) && driver.status == DriverStatus.AVAILABLE && driver.currentOrderId == null) return@withContext driver
+        }
+        null
+    }
+
+    suspend fun assignDriverToShift(driverId: Long, shiftName: String, queuePosition: Int) = withContext(Dispatchers.IO) {
+        val existing = dao.getDriverShiftAssignment(driverId)
+        val assignment = DriverShiftAssignmentEntity(
+            id = existing?.id ?: 0L,
+            driverId = driverId,
+            shiftName = shiftName,
+            queuePosition = queuePosition,
+            active = true,
+            forcedBreakUntil = existing?.forcedBreakUntil ?: 0L,
+            statusBeforeBreak = existing?.statusBeforeBreak
+        )
+        if (existing == null) dao.insertDriverShiftAssignment(assignment) else dao.updateDriverShiftAssignment(assignment)
+    }
+
+    suspend fun moveDriverInShift(driverId: Long, shiftName: String, queuePosition: Int) =
+        assignDriverToShift(driverId, shiftName, queuePosition)
+
+    suspend fun reorderShift(shiftName: String, orderedDriverIds: List<Long>) = withContext(Dispatchers.IO) {
+        orderedDriverIds.distinct().forEachIndexed { index, driverId ->
+            assignDriverToShift(driverId, shiftName, index + 1)
+        }
+    }
+
+    suspend fun setDriverShiftActive(driverId: Long, active: Boolean) = withContext(Dispatchers.IO) {
+        dao.getDriverShiftAssignment(driverId)?.let { assignment ->
+            dao.updateDriverShiftAssignment(assignment.copy(active = active, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    suspend fun restoreDriverFromForcedBreak(driverId: Long) = withContext(Dispatchers.IO) {
+        val assignment = dao.getDriverShiftAssignment(driverId)
+        val previousStatus = assignment?.statusBeforeBreak
+        assignment?.let {
+            dao.updateDriverShiftAssignment(
+                it.copy(
+                    forcedBreakUntil = 0L,
+                    statusBeforeBreak = null,
+                    active = true,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+        dao.getDriverById(driverId)?.let { driver ->
+            if (driver.status == DriverStatus.BREAK) {
+                dao.updateDriver(driver.copy(status = previousStatus ?: DriverStatus.AVAILABLE))
+            }
+        }
+    }
+
+    private suspend fun normalizeExpiredDriverBreaks(now: Long = System.currentTimeMillis()) {
+        dao.getExpiredForcedBreakAssignments(now).forEach { assignment ->
+            val driver = dao.getDriverById(assignment.driverId)
+            val restoredStatus = assignment.statusBeforeBreak ?: DriverStatus.AVAILABLE
+            dao.updateDriverShiftAssignment(
+                assignment.copy(
+                    forcedBreakUntil = 0L,
+                    statusBeforeBreak = null,
+                    updatedAt = now
+                )
+            )
+            if (driver?.status == DriverStatus.BREAK) {
+                dao.updateDriver(driver.copy(status = restoredStatus))
+            }
+        }
+    }
+
+    suspend fun putDriverOnForcedBreak(driverId: Long, minutes: Int) = withContext(Dispatchers.IO) {
+        val assignment = dao.getDriverShiftAssignment(driverId)
+            ?: return@withContext
+        val driver = dao.getDriverById(driverId) ?: return@withContext
+        if (driver.currentOrderId != null || driver.status == DriverStatus.BUSY) {
+            return@withContext
+        }
+        val now = System.currentTimeMillis()
+        val alreadyOnBreak = assignment.forcedBreakUntil > now && driver.status == DriverStatus.BREAK
+        dao.updateDriverShiftAssignment(
+            assignment.copy(
+                forcedBreakUntil = now + minutes.coerceAtLeast(1) * 60_000L,
+                statusBeforeBreak = if (alreadyOnBreak) assignment.statusBeforeBreak else driver.status,
+                updatedAt = now
+            )
+        )
+        if (driver.status != DriverStatus.BREAK) {
+            dao.updateDriver(driver.copy(status = DriverStatus.BREAK))
+        }
+    }
+
+    suspend fun recordDriverDispatchEvent(orderId: Long, driverId: Long, eventType: String, reason: String = "", expiresAt: Long = 0L) =
+        withContext(Dispatchers.IO) {
+            dao.insertDriverDispatchEvent(
+                DriverDispatchEventEntity(orderId = orderId, driverId = driverId, eventType = eventType, reason = reason, expiresAt = expiresAt)
+            )
+        }
+
+    suspend fun timeoutDriverOffer(orderId: Long, driverId: Long, shiftName: String): Result<DriverProfileEntity> =
+        withContext(Dispatchers.IO) {
+            val order = dao.getOrderById(orderId)
+                ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+            if (order.driverId != null) {
+                return@withContext Result.failure(IllegalStateException("الطلب تم تعيينه بالفعل"))
+            }
+            val latestEvent = dao.getLatestDriverEvent(orderId, driverId)
+                ?: return@withContext Result.failure(IllegalStateException("لا يوجد عرض لهذا المندوب"))
+            if (latestEvent.eventType in setOf("ACCEPTED", "REJECTED", "TIMEOUT")) {
+                return@withContext Result.failure(IllegalStateException("تم التعامل مع العرض بالفعل"))
+            }
+            val offer = dao.getLatestDriverOffer(orderId, driverId)
+                ?: return@withContext Result.failure(IllegalStateException("لا يوجد عرض لهذا المندوب"))
+            if (offer.id != latestEvent.id) {
+                return@withContext Result.failure(IllegalStateException("العرض لم يعد نشطًا"))
+            }
+            if (offer.expiresAt <= 0L || System.currentTimeMillis() <= offer.expiresAt) {
+                return@withContext Result.failure(IllegalStateException("مهلة العرض لم تنته بعد"))
+            }
+            if (offer.eventType == "OFFERED") {
+                val latest = dao.getLatestOrderOffer(orderId)
+                if (latest?.id != offer.id) {
+                    return@withContext Result.failure(IllegalStateException("تم تجاوز العرض بعرض أحدث"))
+                }
+            }
+            recordDriverDispatchEvent(orderId, driverId, "TIMEOUT", "انتهت مهلة قبول الطلب")
+            updateDriverPerformance(driverId, "TIMEOUT")
+            applyAutomaticPenaltyIfNeeded(orderId, driverId)
+            if (offer.eventType == "OFFERED") {
+                offerOrderToNextDriver(orderId, shiftName)
+            } else {
+                Result.success(dao.getDriverById(driverId) ?: return@withContext Result.failure(IllegalStateException("المندوب غير موجود")))
+            }
+        }
+
 
     fun getAddressesForCustomer(customerId: Long): Flow<List<CustomerAddressEntity>> = dao.getAddressesForCustomer(customerId)
 
@@ -99,13 +266,13 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         customerName: String,
         customerPhone: String,
         partner: PartnerEntity,
-        items: List<Pair<ProductEntity, Int>>, // product to quantity
-        optionsNotes: String,
+        items: List<Triple<ProductEntity, Int, String>>, // product, quantity, selected options
         deliveryAddress: String,
         customerNotes: String,
         paymentMethod: PaymentMethod,
         appliedDiscount: Double = 0.0,
-        transferReceiptNote: String = ""
+        transferReceiptNote: String = "",
+        transferReceiptUri: String = ""
     ): Result<Long> = withContext(Dispatchers.IO) {
         try {
             if (items.isEmpty()) return@withContext Result.failure(IllegalArgumentException("السلة فارغة"))
@@ -138,6 +305,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 paymentMethod = paymentMethod,
                 paymentStatus = paymentStatus,
                 transferReceiptNote = transferReceiptNote,
+                transferReceiptUri = transferReceiptUri,
                 deliveryAddress = deliveryAddress,
                 subtotal = subtotal,
                 deliveryFee = partner.deliveryFee,
@@ -149,14 +317,14 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
             val orderId = dao.insertOrder(order)
 
-            val orderItems = items.map { (prod, qty) ->
+            val orderItems = items.map { (prod, qty, optionsSummary) ->
                 OrderItemEntity(
                     orderId = orderId,
                     productId = prod.id,
                     productName = prod.name,
                     quantity = qty,
                     unitPrice = prod.price,
-                    optionsSummary = optionsNotes,
+                    optionsSummary = optionsSummary,
                     totalPrice = prod.price * qty
                 )
             }
@@ -328,9 +496,16 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             if (dId != null) {
                 val driver = dao.getDriverById(dId)
                 if (driver != null) {
+                    val now = System.currentTimeMillis()
+                    val assignment = dao.getDriverShiftAssignment(dId)
+                    val releaseStatus = when {
+                        !isActiveDriverAccount(dao.getUserByAssociatedDriverId(dId)) -> DriverStatus.OFFLINE
+                        assignment?.forcedBreakUntil ?: 0L > now -> DriverStatus.BREAK
+                        else -> DriverStatus.AVAILABLE
+                    }
                     dao.updateDriver(
                         driver.copy(
-                            status = DriverStatus.AVAILABLE,
+                            status = releaseStatus,
                             todayEarnings = driver.todayEarnings + current.deliveryFee,
                             totalEarnings = driver.totalEarnings + current.deliveryFee,
                             completedOrdersCount = driver.completedOrdersCount + 1,
@@ -370,64 +545,295 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         Result.success(Unit)
     }
 
+    /**
+     * Sequential dispatch foundation: the first eligible driver receives an offer.
+     * Final assignment happens only after that driver accepts.
+     */
+    suspend fun offerOrderToNextDriver(orderId: Long, shiftName: String): Result<DriverProfileEntity> =
+        withContext(Dispatchers.IO) {
+            val order = dao.getOrderById(orderId)
+                ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+            val excluded = dao.getSequentiallyProcessedDriverIds(orderId).toSet()
+            val driver = getNextEligibleDriver(shiftName, excluded)
+                ?: return@withContext Result.failure(NoEligibleDriverException("لا يوجد مندوب مؤهل جديد حاليًا"))
+            val timeout = (dao.getSettings().firstOrNull()?.driverOfferTimeoutSeconds ?: 30).coerceAtLeast(5)
+            recordDriverDispatchEvent(orderId, driver.id, "OFFERED", "Sequential queue", System.currentTimeMillis() + timeout * 1000L)
+            dao.getUserByAssociatedDriverId(driver.id)?.let { user ->
+                dao.insertNotification(NotificationEntity(
+                    targetUserId = user.id,
+                    targetRole = UserRole.DRIVER,
+                    category = NotificationCategory.ORDER,
+                    title = "عرض طلب جديد",
+                    message = "لديك طلب جديد " + order.orderNumber + ". يرجى القبول أو الرفض.",
+                    relatedOrderId = orderId
+                ))
+            }
+            Result.success(driver)
+        }
+
+    private suspend fun rotateQueueAfterAcceptance(shiftName: String, acceptedDriverId: Long) {
+        val queue = dao.getActiveDriverShiftAssignmentsSnapshot(shiftName)
+        val accepted = queue.firstOrNull { it.driverId == acceptedDriverId } ?: return
+        val rotated = queue.filter { it.driverId != acceptedDriverId } + accepted
+        val now = System.currentTimeMillis()
+        rotated.forEachIndexed { index, item ->
+            dao.updateDriverShiftAssignment(item.copy(queuePosition = index + 1, updatedAt = now))
+        }
+    }
+
+    private suspend fun updateDriverPerformance(driverId: Long, eventType: String) {
+        val current = dao.getDriverPerformance(driverId) ?: DriverPerformanceEntity(driverId = driverId)
+        val next = when (eventType) {
+            "ACCEPTED" -> current.copy(
+                totalAccepted = current.totalAccepted + 1,
+                consecutiveRejects = 0,
+                consecutiveTimeouts = 0,
+                updatedAt = System.currentTimeMillis()
+            )
+            "REJECTED" -> current.copy(
+                totalRejected = current.totalRejected + 1,
+                consecutiveRejects = current.consecutiveRejects + 1,
+                consecutiveTimeouts = 0,
+                updatedAt = System.currentTimeMillis()
+            )
+            "TIMEOUT" -> current.copy(
+                totalTimeouts = current.totalTimeouts + 1,
+                consecutiveTimeouts = current.consecutiveTimeouts + 1,
+                consecutiveRejects = 0,
+                updatedAt = System.currentTimeMillis()
+            )
+            else -> current
+        }
+        dao.upsertDriverPerformance(next)
+    }
+
+    private suspend fun applyAutomaticPenaltyIfNeeded(orderId: Long, driverId: Long) {
+        val settings = dao.getSettings().firstOrNull() ?: AppSettingsEntity()
+        val performance = dao.getDriverPerformance(driverId) ?: return
+        val rejectLimit = settings.maxRejectsBeforeBreak.coerceAtLeast(1)
+        val timeoutLimit = settings.maxTimeoutsBeforeBreak.coerceAtLeast(1)
+        val exceededRejects = performance.consecutiveRejects >= rejectLimit
+        val exceededTimeouts = performance.consecutiveTimeouts >= timeoutLimit
+        if (!exceededRejects && !exceededTimeouts) return
+
+        putDriverOnForcedBreak(driverId, settings.automaticPenaltyBreakMinutes)
+        val reason = if (exceededRejects) {
+            "تجاوز حد الرفضات المتتالية"
+        } else {
+            "تجاوز حد انتهاء مهلة العروض المتتالية"
+        }
+        dao.upsertDriverPerformance(
+            performance.copy(
+                consecutiveRejects = 0,
+                consecutiveTimeouts = 0,
+                lastPenaltyAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+        recordDriverDispatchEvent(orderId, driverId, "PENALTY_BREAK", reason)
+    }
+
+    private suspend fun isDriverEligibleForDispatch(
+        driverId: Long,
+        shiftName: String,
+        now: Long = System.currentTimeMillis()
+    ): Boolean {
+        val assignment = dao.getDriverShiftAssignment(driverId) ?: return false
+        if (!assignment.active || assignment.shiftName != shiftName) return false
+        if (assignment.forcedBreakUntil > now) return false
+        val driver = dao.getDriverById(driverId) ?: return false
+        val account = dao.getUserByAssociatedDriverId(driver.id)
+        return isActiveDriverAccount(account) &&
+            driver.status == DriverStatus.AVAILABLE &&
+            driver.currentOrderId == null
+    }
+
+    private suspend fun validateActiveOffer(
+        orderId: Long,
+        driverId: Long,
+        now: Long = System.currentTimeMillis()
+    ): Result<DriverDispatchEventEntity> {
+        val latestDriverEvent = dao.getLatestDriverEvent(orderId, driverId)
+            ?: return Result.failure(IllegalStateException("لا يوجد عرض نشط لهذا المندوب"))
+        if (latestDriverEvent.eventType in setOf("ACCEPTED", "REJECTED", "TIMEOUT")) {
+            return Result.failure(IllegalStateException("تم التعامل مع هذا العرض بالفعل"))
+        }
+        val offer = dao.getLatestDriverOffer(orderId, driverId)
+            ?: return Result.failure(IllegalStateException("لا يوجد عرض نشط لهذا المندوب"))
+        if (offer.id != latestDriverEvent.id) {
+            return Result.failure(IllegalStateException("العرض لم يعد نشطًا"))
+        }
+        if (offer.expiresAt <= 0L || now > offer.expiresAt) {
+            return Result.failure(IllegalStateException("انتهت مهلة قبول الطلب"))
+        }
+        val latestOrderOffer = dao.getLatestOrderOffer(orderId)
+            ?: return Result.failure(IllegalStateException("لا يوجد عرض نشط للطلب"))
+        if (offer.id != latestOrderOffer.id && offer.eventType == "OFFERED") {
+            return Result.failure(IllegalStateException("تم تجاوز هذا العرض بعرض أحدث"))
+        }
+        return Result.success(offer)
+    }
+
+    suspend fun acceptDriverOffer(orderId: Long, driverId: Long): Result<Unit> = withContext(Dispatchers.IO) {
+        val order = dao.getOrderById(orderId)
+            ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+        if (order.driverId != null) {
+            return@withContext Result.failure(IllegalStateException("تم قبول الطلب بواسطة مندوب آخر"))
+        }
+        val assignment = dao.getDriverShiftAssignment(driverId)
+            ?: return@withContext Result.failure(IllegalStateException("المندوب غير مسجل في شيفت"))
+        val offerValidation = validateActiveOffer(orderId, driverId)
+        if (offerValidation.isFailure) return@withContext Result.failure(offerValidation.exceptionOrNull()!!)
+        if (!isDriverEligibleForDispatch(driverId, assignment.shiftName)) {
+            return@withContext Result.failure(IllegalStateException("المندوب غير مؤهل لقبول الطلب حاليًا"))
+        }
+        val driver = dao.getDriverById(driverId)
+            ?: return@withContext Result.failure(Exception("المندوب غير موجود"))
+
+        val claimed = dao.claimUnassignedOrder(
+            orderId = orderId,
+            driverId = driver.id,
+            driverName = driver.name,
+            driverPhone = driver.phone,
+            updatedAt = System.currentTimeMillis()
+        )
+        if (claimed != 1) {
+            return@withContext Result.failure(IllegalStateException("تم قبول الطلب بواسطة مندوب آخر أو لم يعد متاحًا"))
+        }
+
+        dao.updateDriver(driver.copy(status = DriverStatus.BUSY, currentOrderId = orderId))
+        recordDriverDispatchEvent(orderId, driverId, "ACCEPTED")
+        updateDriverPerformance(driverId, "ACCEPTED")
+        rotateQueueAfterAcceptance(assignment.shiftName, driverId)
+        recordDriverDispatchEvent(orderId, driverId, "QUEUE_ROTATED", "انتقل المندوب إلى نهاية الدور")
+
+        dao.insertActivityLog(
+            OrderActivityLogEntity(
+                orderId = orderId,
+                timeFormatted = timeFormat.format(Date()),
+                actor = driver.name,
+                actorRole = "المندوب",
+                action = "DRIVER_ACCEPTED_OFFER",
+                oldValue = "WAITING_FOR_DRIVER",
+                newValue = "DRIVER_ASSIGNED",
+                reason = "قبل المندوب العرض وتم تعيين الطلب ذريًا"
+            )
+        )
+        Result.success(Unit)
+    }
+
+    suspend fun rejectDriverOffer(orderId: Long, driverId: Long, reason: String, shiftName: String): Result<DriverProfileEntity> =
+        withContext(Dispatchers.IO) {
+            if (reason.isBlank()) return@withContext Result.failure(IllegalArgumentException("سبب الرفض مطلوب"))
+            val offerValidation = validateActiveOffer(orderId, driverId)
+            if (offerValidation.isFailure) return@withContext Result.failure(offerValidation.exceptionOrNull()!!)
+            if (!isDriverEligibleForDispatch(driverId, shiftName)) {
+                return@withContext Result.failure(IllegalStateException("المندوب غير مؤهل للتعامل مع العرض"))
+            }
+            val offerType = offerValidation.getOrThrow().eventType
+            recordDriverDispatchEvent(orderId, driverId, "REJECTED", reason)
+            updateDriverPerformance(driverId, "REJECTED")
+            applyAutomaticPenaltyIfNeeded(orderId, driverId)
+            if (offerType == "OFFERED") {
+                offerOrderToNextDriver(orderId, shiftName)
+            } else {
+                Result.success(dao.getDriverById(driverId) ?: return@withContext Result.failure(IllegalStateException("المندوب غير موجود")))
+            }
+        }
+
+    suspend fun dispatchOrder(orderId: Long, shiftName: String): Result<String> = withContext(Dispatchers.IO) {
+        val order = dao.getOrderById(orderId)
+            ?: return@withContext Result.failure(IllegalArgumentException("الطلب غير موجود"))
+        if (order.driverId != null || order.deliveryStatus != DeliveryStatus.WAITING_FOR_DRIVER) {
+            return@withContext Result.failure(IllegalStateException("الطلب غير متاح للتوزيع"))
+        }
+        when (order.dispatchMode) {
+            DispatchMode.SEQUENTIAL -> {
+                val result = offerOrderToNextDriver(orderId, shiftName)
+                result.map { "SEQUENTIAL" }
+            }
+            DispatchMode.BROADCAST -> {
+                val result = broadcastOrderToEligibleDrivers(orderId, shiftName)
+                result.map { "BROADCAST" }
+            }
+            DispatchMode.HYBRID -> {
+                val result = offerOrderToNextDriver(orderId, shiftName)
+                if (result.isSuccess) {
+                    Result.success("SEQUENTIAL")
+                } else {
+                    val sequentialError = result.exceptionOrNull()
+                    if (sequentialError !is NoEligibleDriverException) {
+                        Result.failure(sequentialError ?: IllegalStateException("فشل التوزيع بالتتابع"))
+                    } else {
+                        val broadcast = broadcastOrderToEligibleDrivers(orderId, shiftName)
+                        if (broadcast.isSuccess) Result.success("BROADCAST")
+                        else Result.failure(
+                            broadcast.exceptionOrNull()
+                                ?: sequentialError
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun broadcastOrderToEligibleDrivers(orderId: Long, shiftName: String): Result<Int> =
+        withContext(Dispatchers.IO) {
+            val order = dao.getOrderById(orderId)
+                ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+            if (order.driverId != null || order.deliveryStatus != DeliveryStatus.WAITING_FOR_DRIVER) {
+                return@withContext Result.failure(IllegalStateException("الطلب غير متاح للتوزيع"))
+            }
+            val eligible = getEligibleDrivers(shiftName)
+            if (eligible.isEmpty()) return@withContext Result.failure(NoEligibleDriverException("لا يوجد مندوب متاح"))
+            val timeout = (dao.getSettings().firstOrNull()?.driverOfferTimeoutSeconds ?: 30).coerceAtLeast(5)
+            val expiresAt = System.currentTimeMillis() + timeout * 1000L
+            eligible.forEach { driver ->
+                recordDriverDispatchEvent(orderId, driver.id, "BROADCAST_OFFER", "Broadcast dispatch", expiresAt)
+                dao.getUserByAssociatedDriverId(driver.id)?.let { user ->
+                    dao.insertNotification(NotificationEntity(
+                        targetUserId = user.id,
+                        targetRole = UserRole.DRIVER,
+                        category = NotificationCategory.ORDER,
+                        title = "طلب متاح للجميع",
+                        message = "الطلب " + order.orderNumber + " متاح، أول قبول صحيح يحصل على التعيين.",
+                        relatedOrderId = orderId
+                    ))
+                }
+            }
+            Result.success(eligible.size)
+        }
+
+    private suspend fun getEligibleDrivers(shiftName: String): List<DriverProfileEntity> {
+        val now = System.currentTimeMillis()
+        normalizeExpiredDriverBreaks(now)
+        val assignments = dao.getActiveDriverShiftAssignmentsSnapshot(shiftName)
+        return assignments.sortedBy { it.queuePosition }.mapNotNull { assignment ->
+            if (assignment.forcedBreakUntil > now) null
+            else dao.getDriverById(assignment.driverId)?.takeIf { driver ->
+                isActiveDriverAccount(dao.getUserByAssociatedDriverId(driver.id)) &&
+                    driver.status == DriverStatus.AVAILABLE &&
+                    driver.currentOrderId == null
+            }
+        }
+    }
+
     suspend fun assignDriverToOrder(
         orderId: Long,
         driver: DriverProfileEntity,
         actor: String,
         actorRole: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        val current = dao.getOrderById(orderId) ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
-
-        // Terminal protection: Cannot assign driver to terminal or cancelled order
-        if (current.orderStatus in setOf(OrderStatus.CANCELLED, OrderStatus.REJECTED, OrderStatus.DELIVERED)) {
-            return@withContext Result.failure(
-                IllegalStateException("لا يمكن تعيين مندوب لطلب ملغي أو مرفوض أو تم تسليمه")
-            )
+        if (driver.status != DriverStatus.AVAILABLE || driver.currentOrderId != null) {
+            return@withContext Result.failure(IllegalStateException("المندوب غير متاح"))
         }
-        if (current.deliveryStatus in setOf(DeliveryStatus.DELIVERED, DeliveryStatus.NOT_REQUIRED)) {
-            return@withContext Result.failure(
-                IllegalStateException("لا يمكن تعيين مندوب لطلب منتهي التوصيل")
-            )
-        }
-
-        val updated = current.copy(
-            driverId = driver.id,
-            driverName = driver.name,
-            driverPhone = driver.phone,
-            deliveryStatus = DeliveryStatus.DRIVER_ASSIGNED,
-            updatedAt = System.currentTimeMillis()
+        val claimed = dao.claimUnassignedOrder(
+            orderId, driver.id, driver.name, driver.phone, System.currentTimeMillis()
         )
-        dao.updateOrder(updated)
-
+        if (claimed != 1) {
+            return@withContext Result.failure(IllegalStateException("تعذر تعيين المندوب: الطلب لم يعد متاحًا"))
+        }
         dao.updateDriver(driver.copy(status = DriverStatus.BUSY, currentOrderId = orderId))
-
-        dao.insertActivityLog(
-            OrderActivityLogEntity(
-                orderId = orderId,
-                timeFormatted = timeFormat.format(Date()),
-                actor = actor,
-                actorRole = actorRole,
-                action = "DRIVER_ASSIGNED",
-                oldValue = "NONE",
-                newValue = driver.name,
-                reason = "تم تعيين المندوب للطلب بنجاح"
-            )
-        )
-
-        // Notify only the authenticated account linked to the assigned driver.
-        dao.getUserByAssociatedDriverId(driver.id)?.let { driverUser ->
-            dao.insertNotification(
-                NotificationEntity(
-                    targetUserId = driverUser.id,
-                    targetRole = UserRole.DRIVER,
-                    category = NotificationCategory.ORDER,
-                    title = "تم تعيين طلب جديد لك!",
-                    message = "طلب جديد ${current.orderNumber} من ${current.partnerName}",
-                    relatedOrderId = orderId
-                )
-            )
-        }
-
         Result.success(Unit)
     }
 
@@ -488,7 +894,11 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     suspend fun setOnboardingEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
         val settings = dao.getSettings().firstOrNull() ?: AppSettingsEntity()
-        dao.updateSettings(settings.copy(onboardingEnabled = enabled))
+        dao.insertSettings(settings.copy(onboardingEnabled = enabled))
+    }
+
+    suspend fun saveAppSettings(settings: AppSettingsEntity) = withContext(Dispatchers.IO) {
+        dao.insertSettings(settings.copy(id = 1))
     }
 
     // --- Home Builder Management ---
@@ -525,9 +935,97 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     }
 
     // --- Driver Profile Operations ---
-    suspend fun setDriverAvailability(driverId: Long, status: DriverStatus) = withContext(Dispatchers.IO) {
-        val driver = dao.getDriverById(driverId) ?: return@withContext
+    suspend fun addDriver(driver: DriverProfileEntity): Long = withContext(Dispatchers.IO) {
+        dao.insertDriver(driver)
+    }
+
+    /**
+     * Admin-controlled driver account provisioning.
+     * A driver cannot self-create an application account; the admin creates
+     * the driver profile and optionally provisions the linked login identity.
+     */
+    suspend fun provisionDriverAccount(
+        driver: DriverProfileEntity,
+        accountName: String,
+        email: String,
+        passwordHash: String,
+        passwordSalt: String
+    ): Long = withContext(Dispatchers.IO) {
+        val driverId = if (driver.id == 0L) dao.insertDriver(driver) else {
+            dao.updateDriver(driver)
+            driver.id
+        }
+        val existing = dao.getUserByAssociatedDriverId(driverId)
+        val user = UserEntity(
+            id = existing?.id ?: 0,
+            name = accountName,
+            phone = driver.phone,
+            email = email,
+            passwordHash = passwordHash,
+            passwordSalt = passwordSalt,
+            role = UserRole.DRIVER,
+            associatedDriverId = driverId,
+            isActive = existing?.isActive ?: false,
+            activationStatus = existing?.activationStatus ?: "PENDING_APPROVAL",
+            activationReason = existing?.activationReason ?: ""
+        )
+        dao.insertUser(user)
+        driverId
+    }
+
+    suspend fun updateDriverProfile(driver: DriverProfileEntity) = withContext(Dispatchers.IO) {
+        dao.updateDriver(driver)
+    }
+
+    suspend fun deleteDriverProfile(driver: DriverProfileEntity) = withContext(Dispatchers.IO) {
+        dao.deleteDriver(driver)
+    }
+
+    suspend fun approveDriverAccount(userId: Long) = withContext(Dispatchers.IO) {
+        dao.updateUserActivation(userId, true, "ACTIVE", "")
+    }
+
+    suspend fun rejectDriverAccount(userId: Long, reason: String) = withContext(Dispatchers.IO) {
+        dao.updateUserActivation(userId, false, "REJECTED", reason)
+    }
+
+    suspend fun suspendDriverAccount(userId: Long, reason: String) = withContext(Dispatchers.IO) {
+        val user = dao.getUserById(userId) ?: return@withContext
+        dao.updateUserActivation(userId, false, "SUSPENDED", reason)
+        user.associatedDriverId?.let { driverId ->
+            dao.getDriverById(driverId)?.let { driver ->
+                dao.updateDriver(driver.copy(status = DriverStatus.OFFLINE))
+            }
+        }
+    }
+
+    suspend fun setAccountActivation(userId: Long, active: Boolean, reason: String = "") = withContext(Dispatchers.IO) {
+        if (active) approveDriverAccount(userId) else suspendDriverAccount(userId, reason)
+    }
+
+    suspend fun setDriverAvailability(driverId: Long, status: DriverStatus): Result<Unit> = withContext(Dispatchers.IO) {
+        val driver = dao.getDriverById(driverId)
+            ?: return@withContext Result.failure(IllegalArgumentException("المندوب غير موجود"))
+        val user = dao.getUserByAssociatedDriverId(driverId)
+        if (!isActiveDriverAccount(user)) {
+            return@withContext Result.failure(IllegalStateException("حساب المندوب غير مفعل"))
+        }
+        if (status !in setOf(DriverStatus.OFFLINE, DriverStatus.AVAILABLE)) {
+            return@withContext Result.failure(IllegalArgumentException("لا يمكن تغيير حالة العمل إلى هذه الحالة يدويًا"))
+        }
+        val assignment = dao.getDriverShiftAssignment(driverId)
+        val now = System.currentTimeMillis()
+        if (assignment?.forcedBreakUntil ?: 0L > now) {
+            return@withContext Result.failure(IllegalStateException("المندوب في استراحة إجبارية"))
+        }
+        if (driver.status == DriverStatus.BREAK) {
+            return@withContext Result.failure(IllegalStateException("لا يمكن تغيير الحالة أثناء الاستراحة"))
+        }
+        if (driver.status == DriverStatus.BUSY) {
+            return@withContext Result.failure(IllegalStateException("لا يمكن تغيير الحالة أثناء وجود طلب نشط"))
+        }
         dao.updateDriver(driver.copy(status = status))
+        Result.success(Unit)
     }
 
     // --- Coupon Operations ---
@@ -596,7 +1094,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 id = 1,
                 onboardingEnabled = true,
                 defaultApproval = ApprovalWorkflow.PARTNER,
-                defaultDispatchMode = DispatchMode.OPEN_DISPATCH,
+                defaultDispatchMode = DispatchMode.SEQUENTIAL,
                 dispatchTriggerTiming = "عند بدء التجهيز"
             )
         )
@@ -608,13 +1106,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             UserEntity(
                 name = "عمرو إبراهيم",
                 phone = "01011122233",
- fix/identity-hardening
                 passwordHash = "6de6eb033759a8a9a255d64386afc169c03ce46f1156907b7e7043c6b98c522d",
                 passwordSalt = "falsaree_seed_v1"
-
-                passwordHash = "c15c1c1a2f31f8cda2ecbcb1b44d96f0f9f9f2d0a5d5c6e8c9a0b1d2e3f4a5b6",
-                passwordSalt = "seed-only-sample-account"
- main
             )
         )
 
@@ -936,7 +1429,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             partnerType = pizzaPartner.type,
             orderStatus = OrderStatus.PREPARING,
             deliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER,
-            dispatchMode = DispatchMode.OPEN_DISPATCH,
+            dispatchMode = DispatchMode.SEQUENTIAL,
             paymentMethod = PaymentMethod.CASH_ON_DELIVERY,
             paymentStatus = PaymentStatus.PENDING,
             deliveryAddress = "شارع سوريا، عمارة 14، المهندسين",
@@ -958,7 +1451,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             partnerType = pharmacyPartner.type,
             orderStatus = OrderStatus.PENDING_REVIEW,
             deliveryStatus = DeliveryStatus.WAITING_FOR_DRIVER,
-            dispatchMode = DispatchMode.OPEN_DISPATCH,
+            dispatchMode = DispatchMode.SEQUENTIAL,
             paymentMethod = PaymentMethod.BANK_TRANSFER,
             paymentStatus = PaymentStatus.PENDING_VERIFICATION,
             transferReceiptNote = "تم تحويل 152 ج.م عبر انستاباي رقم مرجعي 987412",

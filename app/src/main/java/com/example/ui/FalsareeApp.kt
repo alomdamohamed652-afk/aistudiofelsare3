@@ -50,11 +50,15 @@ fun FalsareeApp(
     val products by viewModel.repository.allProducts.collectAsStateWithLifecycle(initialValue = emptyList())
     val orders by viewModel.repository.allOrders.collectAsStateWithLifecycle(initialValue = emptyList())
     val drivers by viewModel.repository.allDrivers.collectAsStateWithLifecycle(initialValue = emptyList())
+    val driverAccounts by viewModel.repository.allDriverAccounts.collectAsStateWithLifecycle(initialValue = emptyList())
+    val driverShiftAssignments by viewModel.repository.driverShiftAssignments.collectAsStateWithLifecycle(initialValue = emptyList())
     val homeSections by viewModel.repository.activeHomeSections.collectAsStateWithLifecycle(initialValue = emptyList())
     val coupons by viewModel.repository.allCoupons.collectAsStateWithLifecycle(initialValue = emptyList())
     val customerOrders by viewModel.customerOrders.collectAsStateWithLifecycle()
     val addresses by viewModel.customerAddresses.collectAsStateWithLifecycle()
     val tickets by viewModel.customerTickets.collectAsStateWithLifecycle()
+    val activeDriverOfferEvents by viewModel.activeDriverOfferEvents.collectAsStateWithLifecycle()
+    val driverPerformance by viewModel.driverPerformance.collectAsStateWithLifecycle()
     val activityLogs by viewModel.repository.recentActivityLogs.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val notifications by remember(currentSession, currentRole) {
@@ -198,12 +202,13 @@ fun FalsareeApp(
                                 },
                                 onApplyCoupon = { viewModel.applyCoupon(it) },
                                 onClearCart = { viewModel.clearCart() },
-                                onConfirmOrder = { addr, notes, pay, receipt ->
+                                onConfirmOrder = { addr, notes, pay, receiptNote, receiptUri ->
                                     viewModel.placeOrder(
                                         deliveryAddress = addr,
                                         customerNotes = notes,
                                         paymentMethod = pay,
-                                        transferReceiptNote = receipt
+                                        transferReceiptNote = receiptNote,
+                                        transferReceiptUri = receiptUri
                                     )
                                     showCartScreen = false
                                 },
@@ -225,6 +230,10 @@ fun FalsareeApp(
                                 orders = orders,
                                 partners = partners,
                                 drivers = drivers,
+                                driverAccounts = driverAccounts,
+                                onSetAccountActivation = { userId, active, reason ->
+                                    coroutineScope.launch { viewModel.repository.setAccountActivation(userId, active, reason) }
+                                },
                                 homeSections = homeSections,
                                 onboardingPages = onboardingPages,
                                 appSettings = appSettings,
@@ -271,6 +280,28 @@ fun FalsareeApp(
                                         viewModel.repository.setDriverAvailability(id, st)
                                     }
                                 },
+                                onAddDriver = { driver ->
+                                    coroutineScope.launch { viewModel.repository.addDriver(driver) }
+                                },
+                                onUpdateDriver = { driver ->
+                                    coroutineScope.launch { viewModel.repository.updateDriverProfile(driver) }
+                                },
+                                onDeleteDriver = { driver ->
+                                    coroutineScope.launch { viewModel.repository.deleteDriverProfile(driver) }
+                                },
+                                onForcedBreak = { id, minutes ->
+                                    coroutineScope.launch { viewModel.repository.putDriverOnForcedBreak(id, minutes) }
+                                },
+                                onRestoreDriver = { id ->
+                                    coroutineScope.launch { viewModel.repository.restoreDriverFromForcedBreak(id) }
+                                },
+                                shiftAssignments = driverShiftAssignments,
+                                onAssignShift = { id, shift, position ->
+                                    coroutineScope.launch { viewModel.repository.assignDriverToShift(id, shift, position) }
+                                },
+                                onSetShiftActive = { id, active ->
+                                    coroutineScope.launch { viewModel.repository.setDriverShiftActive(id, active) }
+                                },
                                 onSaveHomeSection = { sec ->
                                     coroutineScope.launch { viewModel.repository.saveHomeSection(sec) }
                                 },
@@ -286,82 +317,98 @@ fun FalsareeApp(
                                 onToggleOnboardingEnabled = { enabled ->
                                     coroutineScope.launch { viewModel.repository.setOnboardingEnabled(enabled) }
                                 },
+                                onSaveAppSettings = { settings ->
+                                    coroutineScope.launch { viewModel.repository.saveAppSettings(settings) }
+                                },
                                 onSwitchRole = { viewModel.switchRole(it) }
                             )
                         }
 
                         UserRole.DRIVER -> {
                             val activeDriver = activeDriverId?.let { id -> drivers.find { it.id == id } }
-                            val driverActiveOrder = orders.find { it.driverId == activeDriver?.id && it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED }
-                            val openOrders = orders.filter { it.driverId == null && it.deliveryStatus == com.example.core.model.DeliveryStatus.WAITING_FOR_DRIVER && it.orderStatus !in listOf(com.example.core.model.OrderStatus.CANCELLED, com.example.core.model.OrderStatus.REJECTED) }
+                            val driverActiveOrder = orders.find {
+                                it.driverId == activeDriver?.id &&
+                                    it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED
+                            }
+                            val activeOfferOrderIds = activeDriverOfferEvents
+                                .map { it.orderId }
+                                .toSet()
+                            val openOrders = orders.filter {
+                                it.id in activeOfferOrderIds &&
+                                    it.driverId == null &&
+                                    it.deliveryStatus == com.example.core.model.DeliveryStatus.WAITING_FOR_DRIVER &&
+                                    it.orderStatus !in listOf(
+                                        com.example.core.model.OrderStatus.CANCELLED,
+                                        com.example.core.model.OrderStatus.REJECTED
+                                    )
+                            }
                             val driverOrders = orders.filter { it.driverId == activeDriver?.id }
 
                             DriverPortalScreen(
                                 driver = activeDriver,
                                 activeOrder = driverActiveOrder,
                                 openOrders = openOrders,
-                                driverOrders = driverOrders,
-                                payoutRequests = driverPayoutRequests,
-                                onRequestPayout = { amt -> viewModel.requestDriverPayout(amt) },
-                                onToggleAvailability = { st ->
-                                    if (activeDriver != null) {
-                                        coroutineScope.launch { viewModel.repository.setDriverAvailability(activeDriver.id, st) }
+                                offerExpiryByOrderId = activeDriverOfferEvents
+                                    .groupBy { it.orderId }
+                                    .mapValues { (_, events) -> events.maxOf { it.expiresAt } },
+                                driverPerformance = driverPerformance,
+                                onOfferTimeout = { ord ->
+                                    activeDriver?.let { driver ->
+                                        val shift = driverShiftAssignments
+                                            .firstOrNull { it.driverId == driver.id }
+                                            ?.shiftName ?: "الافتراضي"
+                                        viewModel.timeoutDriverOffer(ord.id, driver.id, shift)
                                     }
                                 },
+                                driverOrders = driverOrders,
+                                payoutRequests = driverPayoutRequests,
+                                shiftAssignment = activeDriver?.let { driver ->
+                                    driverShiftAssignments.firstOrNull { it.driverId == driver.id }
+                                },
+                                onRequestPayout = { amt -> viewModel.requestDriverPayout(amt) },
+                                onToggleAvailability = { st ->
+                                    activeDriver?.let { viewModel.setDriverAvailability(it.id, st) }
+                                },
                                 onAcceptOrder = { ord ->
-                                    if (activeDriver != null) {
-                                        coroutineScope.launch {
-                                            viewModel.repository.assignDriverToOrder(
-                                                orderId = ord.id,
-                                                driver = activeDriver,
-                                                actor = activeDriver.name,
-                                                actorRole = "المندوب"
-                                            )
-                                        }
+                                    activeDriver?.let { viewModel.acceptDriverOffer(ord.id, it.id) }
+                                },
+                                onRejectOrder = { ord, reason ->
+                                    activeDriver?.let {
+                                        viewModel.rejectDriverOffer(
+                                            orderId = ord.id,
+                                            driverId = it.id,
+                                            reason = reason,
+                                            shiftName = "الافتراضي"
+                                        )
                                     }
                                 },
                                 onConfirmPickup = { ord ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateDeliveryStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.DeliveryStatus.OUT_FOR_DELIVERY,
-                                            driverId = activeDriver?.id,
-                                            driverName = activeDriver?.name,
-                                            actor = activeDriver?.name ?: "المندوب",
-                                            actorRole = "المندوب",
-                                            reason = "تم استلام الطلب من المحل والانطلاق للتسليم"
-                                        )
-                                    }
+                                    viewModel.updateDriverDeliveryStatus(
+                                        order = ord,
+                                        driver = activeDriver,
+                                        status = com.example.core.model.DeliveryStatus.OUT_FOR_DELIVERY,
+                                        reason = "تم استلام الطلب من المحل والانطلاق للتسليم"
+                                    )
                                 },
                                 onConfirmDelivered = { ord ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateDeliveryStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.DeliveryStatus.DELIVERED,
-                                            driverId = activeDriver?.id,
-                                            driverName = activeDriver?.name,
-                                            actor = activeDriver?.name ?: "المندوب",
-                                            actorRole = "المندوب",
-                                            reason = "تم تسليم الطلب للعميل واستلام المبلغ"
-                                        )
-                                    }
+                                    viewModel.updateDriverDeliveryStatus(
+                                        order = ord,
+                                        driver = activeDriver,
+                                        status = com.example.core.model.DeliveryStatus.DELIVERED,
+                                        reason = "تم تسليم الطلب للعميل واستلام المبلغ"
+                                    )
                                 },
                                 onSwitchRole = { viewModel.switchRole(it) }
                             )
                         }
 
                         UserRole.PARTNER -> {
- fix/identity-hardening
                             // Partner identity must come from the authenticated session.
                             val activePartner = activePartnerId?.let { id -> partners.find { it.id == id } }
                             val partnerProducts = activePartner?.let { partner ->
                                 products.filter { it.partnerId == partner.id }
                             } ?: emptyList()
 
-                            // Resolve partner strictly from the authenticated session identity.
-                            val activePartner = activePartnerId?.let { id -> partners.find { it.id == id } }
-                            val partnerProducts = products.filter { it.partnerId == activePartner?.id }
- main
 
                             if (activePartner == null) {
                                 Box(
@@ -565,7 +612,7 @@ fun CustomerPortalView(
     products: List<com.example.data.local.ProductEntity>,
     cartPartner: com.example.data.local.PartnerEntity?,
     cartItems: Map<com.example.data.local.ProductEntity, Int>,
-    cartOptions: Map<Long, String>,
+    cartOptions: Map<com.example.data.local.ProductEntity, String>,
     appliedCoupon: com.example.data.local.CouponEntity?,
     discountAmount: Double,
     addresses: List<com.example.data.local.CustomerAddressEntity>,
@@ -582,7 +629,7 @@ fun CustomerPortalView(
     onUpdateCartQty: (product: com.example.data.local.ProductEntity, delta: Int) -> Unit,
     onApplyCoupon: (String) -> Unit,
     onClearCart: () -> Unit,
-    onConfirmOrder: (address: String, notes: String, payment: com.example.core.model.PaymentMethod, receiptNote: String) -> Unit,
+    onConfirmOrder: (address: String, notes: String, payment: com.example.core.model.PaymentMethod, receiptNote: String, receiptUri: String) -> Unit,
     onSelectOrderToTrack: (Long) -> Unit,
     favoritePartnerIds: List<Long> = emptyList(),
     onToggleFavorite: (Long) -> Unit = {},

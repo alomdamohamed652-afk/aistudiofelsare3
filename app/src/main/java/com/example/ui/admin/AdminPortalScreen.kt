@@ -32,6 +32,7 @@ fun AdminPortalScreen(
     orders: List<OrderEntity>,
     partners: List<PartnerEntity>,
     drivers: List<DriverProfileEntity>,
+    driverAccounts: List<UserEntity>,
     homeSections: List<HomeSectionEntity>,
     onboardingPages: List<OnboardingPageEntity>,
     appSettings: AppSettingsEntity?,
@@ -41,11 +42,21 @@ fun AdminPortalScreen(
     onReviewTransfer: (orderId: Long, isApproved: Boolean, reason: String) -> Unit,
     onTogglePartnerStatus: (partnerId: Long, isOpen: Boolean) -> Unit,
     onToggleDriverStatus: (driverId: Long, status: DriverStatus) -> Unit,
+    onAddDriver: (DriverProfileEntity) -> Unit,
+    onUpdateDriver: (DriverProfileEntity) -> Unit,
+    onDeleteDriver: (DriverProfileEntity) -> Unit,
+    onForcedBreak: (Long, Int) -> Unit,
+    onRestoreDriver: (Long) -> Unit,
+    shiftAssignments: List<DriverShiftAssignmentEntity>,
+    onAssignShift: (Long, String, Int) -> Unit,
+    onSetShiftActive: (Long, Boolean) -> Unit,
+    onSetAccountActivation: (userId: Long, active: Boolean, reason: String) -> Unit,
     onSaveHomeSection: (HomeSectionEntity) -> Unit,
     onDeleteHomeSection: (HomeSectionEntity) -> Unit,
     onSaveOnboardingPage: (OnboardingPageEntity) -> Unit,
     onDeleteOnboardingPage: (OnboardingPageEntity) -> Unit,
     onToggleOnboardingEnabled: (Boolean) -> Unit,
+    onSaveAppSettings: (AppSettingsEntity) -> Unit,
     onSwitchRole: (UserRole) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -178,7 +189,17 @@ fun AdminPortalScreen(
                 )
                 3 -> AdminDriversTab(
                     drivers = drivers,
-                    onToggleDriverStatus = onToggleDriverStatus
+                    onToggleDriverStatus = onToggleDriverStatus,
+                    onAddDriver = onAddDriver,
+                    onUpdateDriver = onUpdateDriver,
+                    onDeleteDriver = onDeleteDriver,
+                    onForcedBreak = { id, minutes -> onForcedBreak(id, minutes) },
+                    onRestoreDriver = { id -> onRestoreDriver(id) },
+                    shiftAssignments = shiftAssignments,
+                    onAssignShift = { id, shift, position -> onAssignShift(id, shift, position) },
+                    onSetShiftActive = { id, active -> onSetShiftActive(id, active) },
+                    driverAccounts = driverAccounts,
+                    onSetAccountActivation = onSetAccountActivation
                 )
                 4 -> AdminHomeBuilderTab(
                     sections = homeSections,
@@ -195,7 +216,8 @@ fun AdminPortalScreen(
                 6 -> AdminSettingsAndTransfersTab(
                     orders = orders,
                     appSettings = appSettings,
-                    onReviewTransfer = onReviewTransfer
+                    onReviewTransfer = onReviewTransfer,
+                    onSaveAppSettings = onSaveAppSettings
                 )
                 7 -> AdminActivityLogsTab(logs = activityLogs)
             }
@@ -579,74 +601,129 @@ fun AdminPartnersTab(
 @Composable
 fun AdminDriversTab(
     drivers: List<DriverProfileEntity>,
-    onToggleDriverStatus: (driverId: Long, status: DriverStatus) -> Unit
+    onToggleDriverStatus: (driverId: Long, status: DriverStatus) -> Unit,
+    onAddDriver: (DriverProfileEntity) -> Unit,
+    onUpdateDriver: (DriverProfileEntity) -> Unit,
+    onDeleteDriver: (DriverProfileEntity) -> Unit,
+    onForcedBreak: (Long, Int) -> Unit,
+    onRestoreDriver: (Long) -> Unit,
+    shiftAssignments: List<DriverShiftAssignmentEntity>,
+    onAssignShift: (Long, String, Int) -> Unit,
+    onSetShiftActive: (Long, Boolean) -> Unit,
+    driverAccounts: List<UserEntity>,
+    onSetAccountActivation: (userId: Long, active: Boolean, reason: String) -> Unit
 ) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    var editing by remember { mutableStateOf<DriverProfileEntity?>(null) }
+    var showAdd by remember { mutableStateOf(false) }
+    var shiftEditingDriver by remember { mutableStateOf<DriverProfileEntity?>(null) }
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("إدارة المناديب وأسطول التوصيل (" + drivers.size + ") 🛵", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            AppButton(text = "+ إضافة مندوب", onClick = { showAdd = true })
+        }}
+        if (driverAccounts.isNotEmpty()) {
+            item { Text("حسابات المناديب والتفعيل", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall) }
+            items(driverAccounts.filter { !it.isActive }) { account ->
+                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard)) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(account.name, fontWeight = FontWeight.Bold)
+                        Text(account.phone + " • " + account.activationStatus, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AppButton(text = "تفعيل الحساب", onClick = { onSetAccountActivation(account.id, true, "") }, modifier = Modifier.weight(1f))
+                            OutlinedButton(onClick = { onSetAccountActivation(account.id, false, "مرفوض من الإدارة") }, modifier = Modifier.weight(1f)) { Text("رفض") }
+                        }
+                    }
+                }
+            }
+        }
         item {
-            Text("إدارة المناديب وأسطول التوصيل (${drivers.size}) 🛵", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("الشيفتات والدور", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
         }
         items(drivers) { driver ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("🛵", fontSize = 26.sp)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(driver.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                                Text("${driver.vehicle} • ${driver.phone}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                            }
-                        }
-
-                        StatusBadge(
-                            text = driver.status.titleArabic,
-                            backgroundColor = when (driver.status) {
-                                DriverStatus.AVAILABLE -> StatusGreenLight
-                                DriverStatus.BUSY -> StatusBlueLight
-                                DriverStatus.OFFLINE -> StatusGrayLight
-                                DriverStatus.SUSPENDED -> StatusRedLight
-                            },
-                            textColor = when (driver.status) {
-                                DriverStatus.AVAILABLE -> StatusGreen
-                                DriverStatus.BUSY -> StatusBlue
-                                DriverStatus.OFFLINE -> StatusGray
-                                DriverStatus.SUSPENDED -> StatusRed
-                            }
-                        )
+            val assignment = shiftAssignments.firstOrNull { it.driverId == driver.id }
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(driver.name + " — " + (assignment?.shiftName ?: "بدون شيفت"), fontWeight = FontWeight.Bold)
+                    Text("ترتيب الدور: " + (assignment?.queuePosition?.toString() ?: "-"), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { shiftEditingDriver = driver }, modifier = Modifier.weight(1f)) { Text("تعديل الشيفت/الدور") }
+                        OutlinedButton(onClick = { onSetShiftActive(driver.id, !(assignment?.active ?: false)) }, modifier = Modifier.weight(1f)) { Text(if (assignment?.active == true) "إيقاف من الدور" else "تفعيل في الدور") }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Divider(color = SurfaceBorder)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("أرباح اليوم: ${driver.todayEarnings.toInt()} ج.م", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("الرحلات المكتملة: ${driver.completedOrdersCount}", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                        Text("التقييم: ${driver.rating} ⭐", style = MaterialTheme.typography.labelSmall, color = StatusYellow, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        item { HorizontalDivider() }
+        items(drivers) { driver ->
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard), border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(driver.name, fontWeight = FontWeight.Bold)
+                    Text(driver.vehicle + " • " + driver.phone, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Text("المنطقة: " + driver.workingArea, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppButton(text = "تعديل", onClick = { editing = driver }, modifier = Modifier.weight(1f))
+                        OutlinedButton(onClick = { onToggleDriverStatus(driver.id, if (driver.status == DriverStatus.SUSPENDED) DriverStatus.AVAILABLE else DriverStatus.SUSPENDED) }, modifier = Modifier.weight(1f)) { Text(if (driver.status == DriverStatus.SUSPENDED) "إلغاء الإيقاف" else "إيقاف") }
+                        IconButton(onClick = { onDeleteDriver(driver) }) { Icon(Icons.Default.Delete, "حذف", tint = StatusRed) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        if (driver.status == DriverStatus.BREAK) {
+                            OutlinedButton(onClick = { onRestoreDriver(driver.id) }, modifier = Modifier.weight(1f)) { Text("إنهاء الاستراحة") }
+                        } else {
+                            OutlinedButton(onClick = { onForcedBreak(driver.id, 30) }, modifier = Modifier.weight(1f)) { Text("استراحة 30 دقيقة") }
+                        }
                     }
                 }
             }
         }
     }
-}
+    shiftEditingDriver?.let { driver ->
+        val assignment = shiftAssignments.firstOrNull { it.driverId == driver.id }
+        var shiftName by remember(driver.id) { mutableStateOf(assignment?.shiftName ?: "الصباح") }
+        var queuePositionText by remember(driver.id) { mutableStateOf((assignment?.queuePosition ?: 1).toString()) }
+        AlertDialog(
+            onDismissRequest = { shiftEditingDriver = null },
+            title = { Text("إعدادات شيفت المندوب") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(driver.name, fontWeight = FontWeight.Bold)
+                    AppInput(shiftName, { shiftName = it }, "اسم الشيفت", modifier = Modifier.fillMaxWidth())
+                    AppInput(queuePositionText, { queuePositionText = it.filter(Char::isDigit) }, "ترتيب الدور", modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val position = queuePositionText.toIntOrNull()?.takeIf { it > 0 } ?: 1
+                    if (shiftName.isNotBlank()) {
+                        onAssignShift(driver.id, shiftName.trim(), position)
+                        shiftEditingDriver = null
+                    }
+                }) { Text("حفظ") }
+            },
+            dismissButton = { TextButton(onClick = { shiftEditingDriver = null }) { Text("إلغاء") } }
+        )
+    }
 
+    if (showAdd || editing != null) {
+        val current = editing
+        var name by remember(current) { mutableStateOf(current?.name ?: "") }
+        var phone by remember(current) { mutableStateOf(current?.phone ?: "") }
+        var vehicle by remember(current) { mutableStateOf(current?.vehicle ?: "") }
+        var area by remember(current) { mutableStateOf(current?.workingArea ?: "") }
+        AlertDialog(onDismissRequest = { showAdd=false; editing=null }, title={ Text(if(current==null) "إضافة مندوب" else "تعديل بيانات المندوب") },
+            text={ Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppInput(name,{name=it},"الاسم",modifier=Modifier.fillMaxWidth())
+                AppInput(phone,{phone=it},"رقم الهاتف",modifier=Modifier.fillMaxWidth())
+                AppInput(vehicle,{vehicle=it},"المركبة",modifier=Modifier.fillMaxWidth())
+                AppInput(area,{area=it},"منطقة العمل",modifier=Modifier.fillMaxWidth())
+            }},
+            confirmButton={ TextButton(onClick={ if(name.isNotBlank()&&phone.isNotBlank()){
+                val value=current?.copy(name=name.trim(),phone=phone.trim(),vehicle=vehicle.trim(),workingArea=area.trim()) ?: DriverProfileEntity(name=name.trim(),phone=phone.trim(),vehicle=vehicle.trim(),workingArea=area.trim(),status=DriverStatus.OFFLINE)
+                if(current==null) onAddDriver(value) else onUpdateDriver(value)
+                showAdd=false; editing=null
+            }}){Text("حفظ")}},
+            dismissButton={TextButton(onClick={showAdd=false;editing=null}){Text("إلغاء")}})
+    }
+}
 @Composable
 fun AdminHomeBuilderTab(
     sections: List<HomeSectionEntity>,
@@ -860,8 +937,16 @@ fun AdminOnboardingTab(
 fun AdminSettingsAndTransfersTab(
     orders: List<OrderEntity>,
     appSettings: AppSettingsEntity?,
-    onReviewTransfer: (orderId: Long, isApproved: Boolean, reason: String) -> Unit
+    onReviewTransfer: (orderId: Long, isApproved: Boolean, reason: String) -> Unit,
+    onSaveAppSettings: (AppSettingsEntity) -> Unit
 ) {
+    val settings = appSettings ?: AppSettingsEntity()
+    var baseDeliveryFee by remember(settings) { mutableStateOf(settings.baseDeliveryFee.toString()) }
+    var pricePerKm by remember(settings) { mutableStateOf(settings.pricePerKm.toString()) }
+    var minimumOrderAmount by remember(settings) { mutableStateOf(settings.minimumOrderAmount.toString()) }
+    var extraPickupFee by remember(settings) { mutableStateOf(settings.extraPickupFee.toString()) }
+    var driverOfferTimeout by remember(settings) { mutableStateOf(settings.driverOfferTimeoutSeconds.toString()) }
+    var busyDriversOpenDispatch by remember(settings) { mutableStateOf(settings.busyDriversOpenDispatch) }
     val pendingTransfers = remember(orders) {
         orders.filter { it.paymentMethod == PaymentMethod.BANK_TRANSFER && it.paymentStatus == PaymentStatus.PENDING_VERIFICATION }
     }
@@ -939,23 +1024,36 @@ fun AdminSettingsAndTransfersTab(
             }
         }
 
-        // Global Workflow Configuration
         item {
             Spacer(modifier = Modifier.height(12.dp))
-            Text("إعدادات سير العمل العام (Workflow Settings) ⚙️", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("إعدادات التسعير والتشغيل ⚙️", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
-
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("• نمط التوزيع الافتراضي: طلب مفتوح لجميع المناديب ⚡", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                    Text("• آلية اعتماد الطلبات الافتراضية: اعتماد من الشريك", style = MaterialTheme.typography.bodyMedium)
-                    Text("• توقيت انطلاق المندوب: عند بدء التجهيز بالمطبخ", style = MaterialTheme.typography.bodyMedium)
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard), border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("التسعير الأساسي", fontWeight = FontWeight.Bold)
+                    AppInput(value = baseDeliveryFee, onValueChange = { baseDeliveryFee = it }, label = "سعر بداية التوصيل (ج.م)", modifier = Modifier.fillMaxWidth())
+                    AppInput(value = pricePerKm, onValueChange = { pricePerKm = it }, label = "سعر الكيلو الإضافي (ج.م)", modifier = Modifier.fillMaxWidth())
+                    AppInput(value = minimumOrderAmount, onValueChange = { minimumOrderAmount = it }, label = "الحد الأدنى للطلب (0 = بدون حد)", modifier = Modifier.fillMaxWidth())
+                    AppInput(value = extraPickupFee, onValueChange = { extraPickupFee = it }, label = "رسوم كل جهة استلام إضافية (ج.م)", modifier = Modifier.fillMaxWidth())
+                    Divider()
+                    Text("توزيع الطلبات", fontWeight = FontWeight.Bold)
+                    AppInput(value = driverOfferTimeout, onValueChange = { driverOfferTimeout = it.filter(Char::isDigit) }, label = "مهلة قبول المندوب بالثواني", modifier = Modifier.fillMaxWidth())
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = busyDriversOpenDispatch, onCheckedChange = { busyDriversOpenDispatch = it })
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("عند انشغال جميع المناديب: عرض الطلب للجميع")
+                    }
+                    AppButton(text = "حفظ إعدادات التشغيل 💾", onClick = {
+                        onSaveAppSettings(settings.copy(
+                            baseDeliveryFee = baseDeliveryFee.toDoubleOrNull() ?: settings.baseDeliveryFee,
+                            pricePerKm = pricePerKm.toDoubleOrNull() ?: settings.pricePerKm,
+                            minimumOrderAmount = minimumOrderAmount.toDoubleOrNull() ?: settings.minimumOrderAmount,
+                            extraPickupFee = extraPickupFee.toDoubleOrNull() ?: settings.extraPickupFee,
+                            driverOfferTimeoutSeconds = (driverOfferTimeout.toIntOrNull() ?: settings.driverOfferTimeoutSeconds).coerceAtLeast(5),
+                            busyDriversOpenDispatch = busyDriversOpenDispatch
+                        ))
+                    }, modifier = Modifier.fillMaxWidth())
                 }
             }
         }

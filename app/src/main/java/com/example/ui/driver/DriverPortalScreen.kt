@@ -27,6 +27,7 @@ import com.example.core.model.OrderStatus
 import com.example.core.model.UserRole
 import com.example.data.local.DriverPayoutRequestEntity
 import com.example.data.local.DriverProfileEntity
+import com.example.data.local.DriverShiftAssignmentEntity
 import com.example.data.local.OrderEntity
 
 @Composable
@@ -34,11 +35,16 @@ fun DriverPortalScreen(
     driver: DriverProfileEntity?,
     activeOrder: OrderEntity?,
     openOrders: List<OrderEntity>,
+    offerExpiryByOrderId: Map<Long, Long> = emptyMap(),
+    onOfferTimeout: (OrderEntity) -> Unit = {},
+    driverPerformance: com.example.data.local.DriverPerformanceEntity? = null,
     driverOrders: List<OrderEntity> = emptyList(),
     payoutRequests: List<DriverPayoutRequestEntity> = emptyList(),
+    shiftAssignment: DriverShiftAssignmentEntity? = null,
     onRequestPayout: (Double) -> Unit = {},
     onToggleAvailability: (DriverStatus) -> Unit,
     onAcceptOrder: (OrderEntity) -> Unit,
+    onRejectOrder: (OrderEntity, String) -> Unit,
     onConfirmPickup: (OrderEntity) -> Unit,
     onConfirmDelivered: (OrderEntity) -> Unit,
     onSwitchRole: (UserRole) -> Unit,
@@ -116,13 +122,13 @@ fun DriverPortalScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = driver?.name ?: "محمد علي",
+                                    text = driver?.name ?: "مندوب غير معروف",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
                                 Text(
-                                    text = "${driver?.vehicle ?: "دراجة نارية"} • س د ر 1234",
+                                    text = driver?.vehicle?.takeIf { it.isNotBlank() } ?: "لا توجد بيانات مركبة",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White.copy(alpha = 0.7f)
                                 )
@@ -138,7 +144,7 @@ fun DriverPortalScreen(
                                 1.dp,
                                 if (isAvailable) StatusGreen else Color.White.copy(alpha = 0.3f)
                             ),
-                            modifier = Modifier.clickable {
+                            modifier = Modifier.clickable(enabled = driver?.status in setOf(DriverStatus.OFFLINE, DriverStatus.AVAILABLE)) {
                                 onToggleAvailability(if (isAvailable) DriverStatus.OFFLINE else DriverStatus.AVAILABLE)
                             }
                         ) {
@@ -180,18 +186,52 @@ fun DriverPortalScreen(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("طلبات اليوم", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
-                                Text("${driver?.completedOrdersCount ?: 4} رحلات", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                Text("${driver?.completedOrdersCount ?: 0} رحلات", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
                             }
                             Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.15f)))
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("دخل اليوم", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
-                                Text("${driver?.todayEarnings?.toInt() ?: 180} ج.م", fontWeight = FontWeight.ExtraBold, color = DriverAccentYellow, style = MaterialTheme.typography.bodyMedium)
+                                Text("${driver?.todayEarnings?.toInt() ?: 0} ج.م", fontWeight = FontWeight.ExtraBold, color = DriverAccentYellow, style = MaterialTheme.typography.bodyMedium)
                             }
                             Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.15f)))
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("التقييم", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
-                                Text("⭐ ${driver?.rating ?: 4.9}", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                Text(driver?.rating?.let { "⭐ $it" } ?: "—", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
                             }
+                        }
+                    }
+                }
+            }
+
+            shiftAssignment?.let { assignment ->
+                val now = System.currentTimeMillis()
+                val breakActive = assignment.forcedBreakUntil > now
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.08f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("الشيفت", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                            Text(assignment.shiftName, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("ترتيب الدور", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                            Text(if (assignment.active) "#${assignment.queuePosition}" else "غير نشط", color = DriverAccentYellow, fontWeight = FontWeight.Bold)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("الحالة", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                if (breakActive) "استراحة" else if (assignment.active) "نشط" else "خارج الدور",
+                                color = if (breakActive) DriverAccentYellow else Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -203,14 +243,17 @@ fun DriverPortalScreen(
                     activeOrder = activeOrder,
                     openOrders = openOrders,
                     onAcceptOrder = onAcceptOrder,
+                    onRejectOrder = onRejectOrder,
                     onConfirmPickup = onConfirmPickup,
-                    onConfirmDelivered = onConfirmDelivered
+                    onConfirmDelivered = onConfirmDelivered,
+                    driverPerformance = driverPerformance
                 )
                 1 -> DriverOrdersHistoryScreen(
                     activeOrder = activeOrder,
                     allDriverOrders = driverOrders,
                     openOrders = openOrders,
-                    onAcceptOrder = onAcceptOrder
+                    onAcceptOrder = onAcceptOrder,
+                    onRejectOrder = onRejectOrder
                 )
                 2 -> DriverWalletScreen(
                     driver = driver,
@@ -230,16 +273,79 @@ fun DriverPortalScreen(
 fun DriverHomeScreen(
     activeOrder: OrderEntity?,
     openOrders: List<OrderEntity>,
+    offerExpiryByOrderId: Map<Long, Long> = emptyMap(),
+    onOfferTimeout: (OrderEntity) -> Unit = {},
     onAcceptOrder: (OrderEntity) -> Unit,
+    onRejectOrder: (OrderEntity, String) -> Unit,
     onConfirmPickup: (OrderEntity) -> Unit,
-    onConfirmDelivered: (OrderEntity) -> Unit
+    onConfirmDelivered: (OrderEntity) -> Unit,
+    driverPerformance: com.example.data.local.DriverPerformanceEntity? = null
 ) {
+    var rejectOrder by remember { mutableStateOf<OrderEntity?>(null) }
+    val now by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+
+    openOrders.forEach { order ->
+        val expiresAt = offerExpiryByOrderId[order.id] ?: 0L
+        if (expiresAt > 0L) {
+            LaunchedEffect(order.id, expiresAt) {
+                val remaining = expiresAt - System.currentTimeMillis()
+                if (remaining > 0L) kotlinx.coroutines.delay(remaining)
+                onOfferTimeout(order)
+            }
+        }
+    }
+
+    rejectOrder?.let { order ->
+        val reasons = listOf("بعيد جدًا", "مشكلة بالمركبة", "نهاية الشيفت", "ظروف شخصية", "سبب آخر")
+        var selectedReason by remember(order.id) { mutableStateOf(reasons.first()) }
+        AlertDialog(
+            onDismissRequest = { rejectOrder = null },
+            title = { Text("سبب رفض الطلب") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("يجب اختيار سبب قبل رفض الطلب.", color = TextSecondary)
+                    reasons.forEach { reason ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedReason = reason },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = selectedReason == reason, onClick = { selectedReason = reason })
+                            Text(reason)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRejectOrder(order, selectedReason)
+                    rejectOrder = null
+                }) { Text("تأكيد الرفض") }
+            },
+            dismissButton = { TextButton(onClick = { rejectOrder = null }) { Text("إلغاء") } }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        item {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("ملخص الأداء", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("تم القبول: ${driverPerformance?.totalAccepted ?: 0} • تم الرفض: ${driverPerformance?.totalRejected ?: 0}")
+                    Text("انتهت المهلة: ${driverPerformance?.totalTimeouts ?: 0}")
+                    Text("رفضات متتالية: ${driverPerformance?.consecutiveRejects ?: 0} • مهلات متتالية: ${driverPerformance?.consecutiveTimeouts ?: 0}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                }
+            }
+        }
         // Active Order Card (If driver has an ongoing task)
         if (activeOrder != null) {
             item {
@@ -456,6 +562,17 @@ fun DriverHomeScreen(
                             color = TextSecondary
                         )
 
+                        val expiresAt = offerExpiryByOrderId[ord.id] ?: 0L
+                        if (expiresAt > 0L) {
+                            val remainingSeconds = ((expiresAt - now).coerceAtLeast(0L) + 999L) / 1000L
+                            Text(
+                                text = "متبقي لقبول العرض: ${remainingSeconds} ثانية",
+                                color = if (remainingSeconds <= 10) Color.Red else DriverPrimaryOrange,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(14.dp))
 
                         SwipeToConfirmButton(
@@ -464,6 +581,11 @@ fun DriverHomeScreen(
                             backgroundColor = DriverPrimaryOrange,
                             testTag = "driver_accept_order_btn_${ord.id}"
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { rejectOrder = ord },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("رفض الطلب") }
                     }
                 }
             }
