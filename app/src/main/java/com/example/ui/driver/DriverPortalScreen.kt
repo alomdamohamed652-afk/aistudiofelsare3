@@ -238,6 +238,38 @@ fun DriverHomeScreen(
     onConfirmPickup: (OrderEntity) -> Unit,
     onConfirmDelivered: (OrderEntity) -> Unit
 ) {
+    var rejectOrder by remember { mutableStateOf<OrderEntity?>(null) }
+
+    rejectOrder?.let { order ->
+        val reasons = listOf("بعيد جدًا", "مشكلة بالمركبة", "نهاية الشيفت", "ظروف شخصية", "سبب آخر")
+        var selectedReason by remember(order.id) { mutableStateOf(reasons.first()) }
+        AlertDialog(
+            onDismissRequest = { rejectOrder = null },
+            title = { Text("سبب رفض الطلب") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("يجب اختيار سبب قبل رفض الطلب.", color = TextSecondary)
+                    reasons.forEach { reason ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { selectedReason = reason },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = selectedReason == reason, onClick = { selectedReason = reason })
+                            Text(reason)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onRejectOrder(order, selectedReason)
+                    rejectOrder = null
+                }) { Text("تأكيد الرفض") }
+            },
+            dismissButton = { TextButton(onClick = { rejectOrder = null }) { Text("إلغاء") } }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -468,6 +500,11 @@ fun DriverHomeScreen(
                             backgroundColor = DriverPrimaryOrange,
                             testTag = "driver_accept_order_btn_${ord.id}"
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { rejectOrder = ord },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("رفض الطلب") }
                     }
                 }
             }
