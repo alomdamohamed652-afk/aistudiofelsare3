@@ -522,6 +522,10 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         dao.deleteHomeSection(section)
     }
 
+    suspend fun saveSettings(settings: AppSettingsEntity) = withContext(Dispatchers.IO) {
+        dao.insertSettings(settings.copy(id = 1))
+    }
+
     // --- Admin CRUD Operations ---
     suspend fun savePartner(partner: PartnerEntity) = withContext(Dispatchers.IO) {
         if (partner.id == 0L) dao.insertPartner(partner) else dao.updatePartner(partner)
