@@ -94,11 +94,17 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         }
     }
 
-    suspend fun recordDriverDispatchEvent(orderId: Long, driverId: Long, eventType: String, reason: String = "") =
+    suspend fun recordDriverDispatchEvent(orderId: Long, driverId: Long, eventType: String, reason: String = "", expiresAt: Long = 0L) =
         withContext(Dispatchers.IO) {
             dao.insertDriverDispatchEvent(
-                DriverDispatchEventEntity(orderId = orderId, driverId = driverId, eventType = eventType, reason = reason)
+                DriverDispatchEventEntity(orderId = orderId, driverId = driverId, eventType = eventType, reason = reason, expiresAt = expiresAt)
             )
+        }
+
+    suspend fun timeoutDriverOffer(orderId: Long, driverId: Long, shiftName: String): Result<DriverProfileEntity> =
+        withContext(Dispatchers.IO) {
+            recordDriverDispatchEvent(orderId, driverId, "TIMEOUT", "انتهت مهلة قبول الطلب")
+            offerOrderToNextDriver(orderId, shiftName)
         }
 
 
@@ -431,7 +437,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
             val driver = getNextEligibleDriver(shiftName)
                 ?: return@withContext Result.failure(IllegalStateException("لا يوجد مندوب متاح حاليًا"))
-            recordDriverDispatchEvent(orderId, driver.id, "OFFERED", "Sequential queue")
+            val timeout = (dao.getSettings().firstOrNull()?.driverOfferTimeoutSeconds ?: 30).coerceAtLeast(5)
+            recordDriverDispatchEvent(orderId, driver.id, "OFFERED", "Sequential queue", System.currentTimeMillis() + timeout * 1000L)
             dao.getUserByAssociatedDriverId(driver.id)?.let { user ->
                 dao.insertNotification(NotificationEntity(
                     targetUserId = user.id,
