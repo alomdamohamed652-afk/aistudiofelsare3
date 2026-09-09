@@ -51,6 +51,9 @@ fun AuthScreen(
             .fillMaxSize()
             .background(SurfaceBackground)
             .windowInsetsPadding(WindowInsets.safeDrawing)
+            // Keep the form attached to the visible viewport when the IME opens.
+            // This prevents an unpainted gap from appearing above the keyboard.
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
