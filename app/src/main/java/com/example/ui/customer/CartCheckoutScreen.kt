@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.designsystem.*
+import com.example.core.model.CartItem
 import com.example.core.model.PaymentMethod
 import com.example.data.local.CouponEntity
 import com.example.data.local.CustomerAddressEntity
@@ -31,12 +32,11 @@ import com.example.data.local.ProductEntity
 @Composable
 fun CartCheckoutScreen(
     partner: PartnerEntity?,
-    cartItems: Map<ProductEntity, Int>,
-    cartOptions: Map<Long, String>,
+    cartItems: List<CartItem>,
     appliedCoupon: CouponEntity?,
     discountAmount: Double,
     addresses: List<CustomerAddressEntity>,
-    onUpdateQuantity: (ProductEntity, Int) -> Unit,
+    onUpdateQuantity: (CartItem, Int) -> Unit,
     onApplyCoupon: (String) -> Unit,
     onConfirmOrder: (address: String, notes: String, payment: PaymentMethod, receiptNote: String) -> Unit,
     onBack: () -> Unit,
@@ -53,7 +53,7 @@ fun CartCheckoutScreen(
     var isReceiptSimulatedAttached by remember { mutableStateOf(false) }
 
     val subtotal = remember(cartItems) {
-        cartItems.entries.sumOf { it.key.price * it.value }
+        cartItems.sumOf { it.totalPrice }
     }
     val deliveryFee = partner?.deliveryFee ?: 20.0
     val total = (subtotal + deliveryFee - discountAmount).coerceAtLeast(0.0)
@@ -159,13 +159,13 @@ fun CartCheckoutScreen(
                 // Items list
                 item {
                     Text(
-                        text = "الأصناف المختارة (${cartItems.values.sum()}):",
+                        text = "الأصناف المختارة (${cartItems.sumOf { it.quantity }}):",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                items(cartItems.entries.toList()) { (product, qty) ->
+                items(cartItems, key = { it.key }) { item ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -183,19 +183,22 @@ fun CartCheckoutScreen(
                                     .background(SurfaceBackground),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(product.imageEmoji, fontSize = 24.sp)
+                                Text(item.imageEmoji, fontSize = 24.sp)
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(product.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                val opt = cartOptions[product.id]
-                                if (!opt.isNullOrEmpty()) {
-                                    Text(opt, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                                Text(item.productName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                if (item.optionsSummary.isNotEmpty()) {
+                                    Text(item.optionsSummary, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                                 }
-                                Text("${product.price.toInt()} ج.م", style = MaterialTheme.typography.labelMedium, color = BrandPrimary, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${item.unitPrice.toInt()} ج.م × ${item.quantity} = ${item.totalPrice.toInt()} ج.م",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = BrandPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
 
-                            // Stepper
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
@@ -204,19 +207,19 @@ fun CartCheckoutScreen(
                                     .padding(2.dp)
                             ) {
                                 IconButton(
-                                    onClick = { onUpdateQuantity(product, -1) },
+                                    onClick = { onUpdateQuantity(item, -1) },
                                     modifier = Modifier.size(32.dp)
                                 ) {
                                     Icon(
-                                        imageVector = if (qty == 1) Icons.Default.Delete else Icons.Default.Remove,
+                                        imageVector = if (item.quantity == 1) Icons.Default.Delete else Icons.Default.Remove,
                                         contentDescription = "تقليل",
-                                        tint = if (qty == 1) StatusRed else TextPrimary,
+                                        tint = if (item.quantity == 1) StatusRed else TextPrimary,
                                         modifier = Modifier.size(16.dp)
                                     )
                                 }
-                                Text("$qty", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
+                                Text("${item.quantity}", fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
                                 IconButton(
-                                    onClick = { onUpdateQuantity(product, 1) },
+                                    onClick = { onUpdateQuantity(item, 1) },
                                     modifier = Modifier.size(32.dp)
                                 ) {
                                     Icon(imageVector = Icons.Default.Add, contentDescription = "زيادة", modifier = Modifier.size(16.dp))
@@ -225,7 +228,6 @@ fun CartCheckoutScreen(
                         }
                     }
                 }
-
                 // Coupon code box
                 item {
                     Card(
