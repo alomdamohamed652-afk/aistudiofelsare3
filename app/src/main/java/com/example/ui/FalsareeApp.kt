@@ -333,6 +333,18 @@ fun FalsareeApp(
                                         }
                                     }
                                 },
+                                onRejectOrder = { ord, reason ->
+                                    if (activeDriver != null) {
+                                        coroutineScope.launch {
+                                            viewModel.repository.rejectDriverOffer(
+                                                orderId = ord.id,
+                                                driverId = activeDriver.id,
+                                                reason = reason,
+                                                shiftName = "الافتراضي"
+                                            )
+                                        }
+                                    }
+                                },
                                 onConfirmPickup = { ord ->
                                     coroutineScope.launch {
                                         viewModel.repository.updateDeliveryStatus(
