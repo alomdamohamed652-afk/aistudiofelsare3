@@ -29,7 +29,11 @@ data class PartnerEntity(
     val deliveryTimeMinutes: Int,
     val deliveryFee: Double,
     val address: String,
+    // Temporary visual fields. imageUrl enables real remote images before file uploads are connected.
     val logoEmoji: String,
+    val imageUrl: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     val workingHours: String = "9:00 ص - 12:00 م",
     val approvalWorkflow: ApprovalWorkflow = ApprovalWorkflow.PARTNER,
     val activeOrdersCount: Int = 0
@@ -44,7 +48,9 @@ data class ProductEntity(
     val description: String,
     val price: Double,
     val status: ProductStatus = ProductStatus.AVAILABLE,
+    // Temporary fallback visual; imageUrl takes priority when provided.
     val imageEmoji: String,
+    val imageUrl: String = "",
     val sizesString: String = "", // optional size choices, stored as name:price pairs
     val addonsString: String = "" // optional add-ons, stored as name:price pairs
 )
@@ -112,6 +118,7 @@ data class OnboardingPageEntity(
     val title: String,
     val description: String,
     val iconEmoji: String,
+    val imageUrl: String = "",
     val active: Boolean = true
 )
 
