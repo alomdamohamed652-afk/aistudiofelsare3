@@ -931,8 +931,9 @@ class FalsareeRepository(private val dao: FalsareeDao) {
             passwordSalt = passwordSalt,
             role = UserRole.DRIVER,
             associatedDriverId = driverId,
-            isActive = false,
-            activationStatus = "PENDING_APPROVAL"
+            isActive = existing?.isActive ?: false,
+            activationStatus = existing?.activationStatus ?: "PENDING_APPROVAL",
+            activationReason = existing?.activationReason ?: ""
         )
         dao.insertUser(user)
         driverId
