@@ -292,6 +292,12 @@ interface FalsareeDao {
     @Query("SELECT * FROM driver_shift_assignments WHERE driverId = :driverId LIMIT 1")
     suspend fun getDriverShiftAssignment(driverId: Long): DriverShiftAssignmentEntity?
 
+    @Query("SELECT * FROM driver_shift_assignments ORDER BY shiftName, queuePosition")
+    fun getAllDriverShiftAssignments(): Flow<List<DriverShiftAssignmentEntity>>
+
+    @Query("SELECT * FROM driver_shift_assignments WHERE shiftName = :shiftName ORDER BY queuePosition")
+    fun getDriverShiftAssignmentsForShift(shiftName: String): Flow<List<DriverShiftAssignmentEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDriverShiftAssignment(assignment: DriverShiftAssignmentEntity): Long
 
