@@ -289,6 +289,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM driver_shift_assignments WHERE active = 1 ORDER BY shiftName, queuePosition")
     fun getActiveDriverShiftAssignments(): Flow<List<DriverShiftAssignmentEntity>>
 
+    @Query("SELECT * FROM driver_shift_assignments WHERE active = 1 AND shiftName = :shiftName ORDER BY queuePosition")
+    suspend fun getActiveDriverShiftAssignmentsSnapshot(shiftName: String): List<DriverShiftAssignmentEntity>
+
     @Query("SELECT * FROM driver_shift_assignments WHERE driverId = :driverId LIMIT 1")
     suspend fun getDriverShiftAssignment(driverId: Long): DriverShiftAssignmentEntity?
 
