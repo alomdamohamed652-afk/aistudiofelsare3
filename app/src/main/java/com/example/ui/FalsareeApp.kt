@@ -50,6 +50,7 @@ fun FalsareeApp(
     val products by viewModel.repository.allProducts.collectAsStateWithLifecycle(initialValue = emptyList())
     val orders by viewModel.repository.allOrders.collectAsStateWithLifecycle(initialValue = emptyList())
     val drivers by viewModel.repository.allDrivers.collectAsStateWithLifecycle(initialValue = emptyList())
+    val driverAccounts by viewModel.repository.allDriverAccounts.collectAsStateWithLifecycle(initialValue = emptyList())
     val homeSections by viewModel.repository.activeHomeSections.collectAsStateWithLifecycle(initialValue = emptyList())
     val coupons by viewModel.repository.allCoupons.collectAsStateWithLifecycle(initialValue = emptyList())
     val customerOrders by viewModel.customerOrders.collectAsStateWithLifecycle()
@@ -226,6 +227,10 @@ fun FalsareeApp(
                                 orders = orders,
                                 partners = partners,
                                 drivers = drivers,
+                                driverAccounts = driverAccounts,
+                                onSetAccountActivation = { userId, active, reason ->
+                                    coroutineScope.launch { viewModel.repository.setAccountActivation(userId, active, reason) }
+                                },
                                 homeSections = homeSections,
                                 onboardingPages = onboardingPages,
                                 appSettings = appSettings,
