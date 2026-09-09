@@ -310,6 +310,9 @@ interface FalsareeDao {
     @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId ORDER BY createdAt ASC")
     fun getDispatchEventsForOrder(orderId: Long): Flow<List<DriverDispatchEventEntity>>
 
+    @Query("SELECT COUNT(*) FROM driver_dispatch_events WHERE driverId = :driverId AND eventType = :eventType")
+    suspend fun countDriverDispatchEvents(driverId: Long, eventType: String): Int
+
     @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND driverId = :driverId AND eventType = 'OFFERED' ORDER BY createdAt DESC LIMIT 1")
     suspend fun getLatestDriverOffer(orderId: Long, driverId: Long): DriverDispatchEventEntity?
 
