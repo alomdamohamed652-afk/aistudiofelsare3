@@ -479,6 +479,50 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun setDriverAvailability(driverId: Long, status: DriverStatus) {
+        viewModelScope.launch {
+            repository.setDriverAvailability(driverId, status)
+                .onFailure { _alertMessage.value = it.message ?: "تعذر تغيير حالة المندوب" }
+        }
+    }
+
+    fun acceptDriverOffer(orderId: Long, driverId: Long) {
+        viewModelScope.launch {
+            repository.acceptDriverOffer(orderId, driverId)
+                .onFailure { _alertMessage.value = it.message ?: "تعذر قبول الطلب" }
+        }
+    }
+
+    fun rejectDriverOffer(orderId: Long, driverId: Long, reason: String, shiftName: String) {
+        viewModelScope.launch {
+            if (reason.isBlank()) {
+                _alertMessage.value = "يجب اختيار سبب الرفض"
+                return@launch
+            }
+            repository.rejectDriverOffer(orderId, driverId, reason, shiftName)
+                .onFailure { _alertMessage.value = it.message ?: "تعذر رفض الطلب" }
+        }
+    }
+
+    fun updateDriverDeliveryStatus(order: OrderEntity, driver: DriverProfileEntity?, status: DeliveryStatus, reason: String) {
+        val activeDriverId = currentSession.value?.associatedDriverId
+        if (driver == null || activeDriverId != driver.id) {
+            _alertMessage.value = "لا توجد صلاحية لتنفيذ هذا الإجراء"
+            return
+        }
+        viewModelScope.launch {
+            repository.updateDeliveryStatus(
+                orderId = order.id,
+                newStatus = status,
+                driverId = driver.id,
+                driverName = driver.name,
+                actor = driver.name,
+                actorRole = "المندوب",
+                reason = reason
+            ).onFailure { _alertMessage.value = it.message ?: "تعذر تحديث حالة التوصيل" }
+        }
+    }
+
     fun requestDriverPayout(amount: Double) {
         viewModelScope.launch {
             val driverId = currentSession.value?.associatedDriverId
