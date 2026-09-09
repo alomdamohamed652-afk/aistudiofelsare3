@@ -18,6 +18,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val allPartners: Flow<List<PartnerEntity>> = dao.getAllPartners()
     fun getPartnersByType(type: PartnerType): Flow<List<PartnerEntity>> = dao.getPartnersByType(type)
     fun getProductsForPartner(partnerId: Long): Flow<List<ProductEntity>> = dao.getProductsForPartner(partnerId)
+    fun getCategoriesForPartner(partnerId: Long): Flow<List<PartnerCategoryEntity>> = dao.getCategoriesForPartner(partnerId)
     val allProducts: Flow<List<ProductEntity>> = dao.getAllProducts()
 
     val allOrders: Flow<List<OrderEntity>> = dao.getAllOrders()
@@ -551,6 +552,14 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     suspend fun setPartnerOpenStatus(partnerId: Long, isOpen: Boolean) = withContext(Dispatchers.IO) {
         val partner = dao.getPartnerById(partnerId) ?: return@withContext
         dao.updatePartner(partner.copy(isOpen = isOpen))
+    }
+
+    suspend fun saveCategory(category: PartnerCategoryEntity) = withContext(Dispatchers.IO) {
+        if (category.id == 0L) dao.insertCategory(category) else dao.updateCategory(category)
+    }
+
+    suspend fun deleteCategory(category: PartnerCategoryEntity) = withContext(Dispatchers.IO) {
+        dao.deleteCategory(category)
     }
 
     suspend fun saveProduct(product: ProductEntity) = withContext(Dispatchers.IO) {
