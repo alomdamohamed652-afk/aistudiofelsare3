@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
 import com.example.core.designsystem.*
-import com.example.BuildConfig
 import com.example.core.model.OrderStatus
 import com.example.core.model.ProductStatus
 import com.example.core.model.UserRole
@@ -117,11 +116,7 @@ fun PartnerPortalScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
- fix/identity-hardening
-
-                if (BuildConfig.DEBUG) {
-                // Partner Switcher (To easily test Restaurant vs Pharmacy vs Cafe vs Store)
- main
+                // Partner Switcher is available in debug builds only.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -164,7 +159,6 @@ fun PartnerPortalScreen(
                             colors = SwitchDefaults.colors(checkedThumbColor = StatusGreen)
                         )
                     }
-                }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
