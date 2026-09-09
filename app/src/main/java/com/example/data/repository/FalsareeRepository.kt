@@ -534,6 +534,37 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         dao.insertDriver(driver)
     }
 
+    /**
+     * Admin-controlled driver account provisioning.
+     * A driver cannot self-create an application account; the admin creates
+     * the driver profile and optionally provisions the linked login identity.
+     */
+    suspend fun provisionDriverAccount(
+        driver: DriverProfileEntity,
+        accountName: String,
+        email: String,
+        passwordHash: String,
+        passwordSalt: String
+    ): Long = withContext(Dispatchers.IO) {
+        val driverId = if (driver.id == 0L) dao.insertDriver(driver) else {
+            dao.updateDriver(driver)
+            driver.id
+        }
+        val existing = dao.getUserByAssociatedDriverId(driverId)
+        val user = UserEntity(
+            id = existing?.id ?: 0,
+            name = accountName,
+            phone = driver.phone,
+            email = email,
+            passwordHash = passwordHash,
+            passwordSalt = passwordSalt,
+            role = UserRole.DRIVER,
+            associatedDriverId = driverId
+        )
+        dao.insertUser(user)
+        driverId
+    }
+
     suspend fun updateDriverProfile(driver: DriverProfileEntity) = withContext(Dispatchers.IO) {
         dao.updateDriver(driver)
     }
