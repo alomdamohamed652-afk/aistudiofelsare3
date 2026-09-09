@@ -117,13 +117,13 @@ fun DriverPortalScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
-                                    text = driver?.name ?: "محمد علي",
+                                    text = driver?.name ?: "مندوب غير معروف",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
                                 Text(
-                                    text = "${driver?.vehicle ?: "دراجة نارية"} • س د ر 1234",
+                                    text = driver?.vehicle?.takeIf { it.isNotBlank() } ?: "لا توجد بيانات مركبة",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White.copy(alpha = 0.7f)
                                 )
@@ -181,17 +181,17 @@ fun DriverPortalScreen(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("طلبات اليوم", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
-                                Text("${driver?.completedOrdersCount ?: 4} رحلات", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                Text("${driver?.completedOrdersCount ?: 0} رحلات", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
                             }
                             Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.15f)))
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("دخل اليوم", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
-                                Text("${driver?.todayEarnings?.toInt() ?: 180} ج.م", fontWeight = FontWeight.ExtraBold, color = DriverAccentYellow, style = MaterialTheme.typography.bodyMedium)
+                                Text("${driver?.todayEarnings?.toInt() ?: 0} ج.م", fontWeight = FontWeight.ExtraBold, color = DriverAccentYellow, style = MaterialTheme.typography.bodyMedium)
                             }
                             Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(alpha = 0.15f)))
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("التقييم", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
-                                Text("⭐ ${driver?.rating ?: 4.9}", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                Text(driver?.rating?.let { "⭐ $it" } ?: "—", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
