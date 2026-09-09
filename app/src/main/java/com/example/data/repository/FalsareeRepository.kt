@@ -51,6 +51,56 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val favoritePartnerIds: Flow<List<Long>> = dao.getFavoritePartnerIds()
     fun getFavoritePartnerIdsForCustomer(customerId: Long): Flow<List<Long>> = dao.getFavoritePartnerIdsForCustomer(customerId)
     val driverPayoutRequests: Flow<List<DriverPayoutRequestEntity>> = dao.getAllPayoutRequests()
+    val driverShiftAssignments: Flow<List<DriverShiftAssignmentEntity>> = dao.getActiveDriverShiftAssignments()
+
+    /**
+     * Hybrid dispatch foundation: the next eligible driver is selected by the
+     * configured shift queue. Busy, inactive, or forced-break drivers are skipped.
+     */
+    suspend fun getNextEligibleDriver(shiftName: String): DriverProfileEntity? = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val assignments = dao.getActiveDriverShiftAssignments().firstOrNull()
+            .orEmpty()
+            .filter { it.shiftName == shiftName && it.forcedBreakUntil <= now }
+            .sortedBy { it.queuePosition }
+        for (assignment in assignments) {
+            val driver = dao.getDriverById(assignment.driverId) ?: continue
+            if (driver.status == DriverStatus.AVAILABLE && driver.currentOrderId == null) return@withContext driver
+        }
+        null
+    }
+
+    suspend fun assignDriverToShift(driverId: Long, shiftName: String, queuePosition: Int) = withContext(Dispatchers.IO) {
+        val existing = dao.getDriverShiftAssignment(driverId)
+        val assignment = DriverShiftAssignmentEntity(
+            id = existing?.id ?: 0L,
+            driverId = driverId,
+            shiftName = shiftName,
+            queuePosition = queuePosition,
+            active = true,
+            forcedBreakUntil = existing?.forcedBreakUntil ?: 0L
+        )
+        if (existing == null) dao.insertDriverShiftAssignment(assignment) else dao.updateDriverShiftAssignment(assignment)
+    }
+
+    suspend fun putDriverOnForcedBreak(driverId: Long, minutes: Int) = withContext(Dispatchers.IO) {
+        val assignment = dao.getDriverShiftAssignment(driverId)
+            ?: return@withContext
+        dao.updateDriverShiftAssignment(
+            assignment.copy(forcedBreakUntil = System.currentTimeMillis() + minutes.coerceAtLeast(1) * 60_000L)
+        )
+        dao.getDriverById(driverId)?.let { driver ->
+            dao.updateDriver(driver.copy(status = DriverStatus.BREAK))
+        }
+    }
+
+    suspend fun recordDriverDispatchEvent(orderId: Long, driverId: Long, eventType: String, reason: String = "") =
+        withContext(Dispatchers.IO) {
+            dao.insertDriverDispatchEvent(
+                DriverDispatchEventEntity(orderId = orderId, driverId = driverId, eventType = eventType, reason = reason)
+            )
+        }
+
 
     fun getAddressesForCustomer(customerId: Long): Flow<List<CustomerAddressEntity>> = dao.getAddressesForCustomer(customerId)
 
