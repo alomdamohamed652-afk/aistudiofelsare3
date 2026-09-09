@@ -286,6 +286,12 @@ fun FalsareeApp(
                                 onDeleteDriver = { driver ->
                                     coroutineScope.launch { viewModel.repository.deleteDriverProfile(driver) }
                                 },
+                                onForcedBreak = { id, minutes ->
+                                    coroutineScope.launch { viewModel.repository.putDriverOnForcedBreak(id, minutes) }
+                                },
+                                onRestoreDriver = { id ->
+                                    coroutineScope.launch { viewModel.repository.restoreDriverFromForcedBreak(id) }
+                                },
                                 onSaveHomeSection = { sec ->
                                     coroutineScope.launch { viewModel.repository.saveHomeSection(sec) }
                                 },
