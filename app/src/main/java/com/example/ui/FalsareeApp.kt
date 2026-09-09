@@ -336,54 +336,36 @@ fun FalsareeApp(
                                 payoutRequests = driverPayoutRequests,
                                 onRequestPayout = { amt -> viewModel.requestDriverPayout(amt) },
                                 onToggleAvailability = { st ->
-                                    if (activeDriver != null) {
-                                        coroutineScope.launch { viewModel.repository.setDriverAvailability(activeDriver.id, st) }
-                                    }
+                                    activeDriver?.let { viewModel.setDriverAvailability(it.id, st) }
                                 },
                                 onAcceptOrder = { ord ->
-                                    if (activeDriver != null) {
-                                        coroutineScope.launch {
-                                            viewModel.repository.acceptDriverOffer(ord.id, activeDriver.id)
-                                        }
-                                    }
+                                    activeDriver?.let { viewModel.acceptDriverOffer(ord.id, it.id) }
                                 },
                                 onRejectOrder = { ord, reason ->
-                                    if (activeDriver != null) {
-                                        coroutineScope.launch {
-                                            viewModel.repository.rejectDriverOffer(
-                                                orderId = ord.id,
-                                                driverId = activeDriver.id,
-                                                reason = reason,
-                                                shiftName = "الافتراضي"
-                                            )
-                                        }
+                                    activeDriver?.let {
+                                        viewModel.rejectDriverOffer(
+                                            orderId = ord.id,
+                                            driverId = it.id,
+                                            reason = reason,
+                                            shiftName = "الافتراضي"
+                                        )
                                     }
                                 },
                                 onConfirmPickup = { ord ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateDeliveryStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.DeliveryStatus.OUT_FOR_DELIVERY,
-                                            driverId = activeDriver?.id,
-                                            driverName = activeDriver?.name,
-                                            actor = activeDriver?.name ?: "المندوب",
-                                            actorRole = "المندوب",
-                                            reason = "تم استلام الطلب من المحل والانطلاق للتسليم"
-                                        )
-                                    }
+                                    viewModel.updateDriverDeliveryStatus(
+                                        order = ord,
+                                        driver = activeDriver,
+                                        status = com.example.core.model.DeliveryStatus.OUT_FOR_DELIVERY,
+                                        reason = "تم استلام الطلب من المحل والانطلاق للتسليم"
+                                    )
                                 },
                                 onConfirmDelivered = { ord ->
-                                    coroutineScope.launch {
-                                        viewModel.repository.updateDeliveryStatus(
-                                            orderId = ord.id,
-                                            newStatus = com.example.core.model.DeliveryStatus.DELIVERED,
-                                            driverId = activeDriver?.id,
-                                            driverName = activeDriver?.name,
-                                            actor = activeDriver?.name ?: "المندوب",
-                                            actorRole = "المندوب",
-                                            reason = "تم تسليم الطلب للعميل واستلام المبلغ"
-                                        )
-                                    }
+                                    viewModel.updateDriverDeliveryStatus(
+                                        order = ord,
+                                        driver = activeDriver,
+                                        status = com.example.core.model.DeliveryStatus.DELIVERED,
+                                        reason = "تم تسليم الطلب للعميل واستلام المبلغ"
+                                    )
                                 },
                                 onSwitchRole = { viewModel.switchRole(it) }
                             )
