@@ -41,6 +41,9 @@ fun AdminPortalScreen(
     onReviewTransfer: (orderId: Long, isApproved: Boolean, reason: String) -> Unit,
     onTogglePartnerStatus: (partnerId: Long, isOpen: Boolean) -> Unit,
     onToggleDriverStatus: (driverId: Long, status: DriverStatus) -> Unit,
+    onAddDriver: (DriverProfileEntity) -> Unit,
+    onUpdateDriver: (DriverProfileEntity) -> Unit,
+    onDeleteDriver: (DriverProfileEntity) -> Unit,
     onSaveHomeSection: (HomeSectionEntity) -> Unit,
     onDeleteHomeSection: (HomeSectionEntity) -> Unit,
     onSaveOnboardingPage: (OnboardingPageEntity) -> Unit,
@@ -179,7 +182,10 @@ fun AdminPortalScreen(
                 )
                 3 -> AdminDriversTab(
                     drivers = drivers,
-                    onToggleDriverStatus = onToggleDriverStatus
+                    onToggleDriverStatus = onToggleDriverStatus,
+                    onAddDriver = onAddDriver,
+                    onUpdateDriver = onUpdateDriver,
+                    onDeleteDriver = onDeleteDriver
                 )
                 4 -> AdminHomeBuilderTab(
                     sections = homeSections,
@@ -581,74 +587,55 @@ fun AdminPartnersTab(
 @Composable
 fun AdminDriversTab(
     drivers: List<DriverProfileEntity>,
-    onToggleDriverStatus: (driverId: Long, status: DriverStatus) -> Unit
+    onToggleDriverStatus: (driverId: Long, status: DriverStatus) -> Unit,
+    onAddDriver: (DriverProfileEntity) -> Unit,
+    onUpdateDriver: (DriverProfileEntity) -> Unit,
+    onDeleteDriver: (DriverProfileEntity) -> Unit
 ) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text("إدارة المناديب وأسطول التوصيل (${drivers.size}) 🛵", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        }
+    var editing by remember { mutableStateOf<DriverProfileEntity?>(null) }
+    var showAdd by remember { mutableStateOf(false) }
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("إدارة المناديب وأسطول التوصيل (" + drivers.size + ") 🛵", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            AppButton(text = "+ إضافة مندوب", onClick = { showAdd = true })
+        }}
         items(drivers) { driver ->
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceCard),
-                border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)
-            ) {
+            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard), border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("🛵", fontSize = 26.sp)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(driver.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
-                                Text("${driver.vehicle} • ${driver.phone}", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                            }
-                        }
-
-                        StatusBadge(
-                            text = driver.status.titleArabic,
-                            backgroundColor = when (driver.status) {
-                                DriverStatus.AVAILABLE -> StatusGreenLight
-                                DriverStatus.BUSY -> StatusBlueLight
-                                DriverStatus.OFFLINE -> StatusGrayLight
-                                DriverStatus.SUSPENDED -> StatusRedLight
-                            },
-                            textColor = when (driver.status) {
-                                DriverStatus.AVAILABLE -> StatusGreen
-                                DriverStatus.BUSY -> StatusBlue
-                                DriverStatus.OFFLINE -> StatusGray
-                                DriverStatus.SUSPENDED -> StatusRed
-                            }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Divider(color = SurfaceBorder)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("أرباح اليوم: ${driver.todayEarnings.toInt()} ج.م", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        Text("الرحلات المكتملة: ${driver.completedOrdersCount}", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
-                        Text("التقييم: ${driver.rating} ⭐", style = MaterialTheme.typography.labelSmall, color = StatusYellow, fontWeight = FontWeight.Bold)
+                    Text(driver.name, fontWeight = FontWeight.Bold)
+                    Text(driver.vehicle + " • " + driver.phone, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Text("المنطقة: " + driver.workingArea, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppButton(text = "تعديل", onClick = { editing = driver }, modifier = Modifier.weight(1f))
+                        OutlinedButton(onClick = { onToggleDriverStatus(driver.id, if (driver.status == DriverStatus.SUSPENDED) DriverStatus.AVAILABLE else DriverStatus.SUSPENDED) }, modifier = Modifier.weight(1f)) { Text(if (driver.status == DriverStatus.SUSPENDED) "إلغاء الإيقاف" else "إيقاف") }
+                        IconButton(onClick = { onDeleteDriver(driver) }) { Icon(Icons.Default.Delete, "حذف", tint = StatusRed) }
                     }
                 }
             }
         }
     }
+    if (showAdd || editing != null) {
+        val current = editing
+        var name by remember(current) { mutableStateOf(current?.name ?: "") }
+        var phone by remember(current) { mutableStateOf(current?.phone ?: "") }
+        var vehicle by remember(current) { mutableStateOf(current?.vehicle ?: "") }
+        var area by remember(current) { mutableStateOf(current?.workingArea ?: "") }
+        AlertDialog(onDismissRequest = { showAdd=false; editing=null }, title={ Text(if(current==null) "إضافة مندوب" else "تعديل بيانات المندوب") },
+            text={ Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppInput(name,{name=it},"الاسم",modifier=Modifier.fillMaxWidth())
+                AppInput(phone,{phone=it},"رقم الهاتف",modifier=Modifier.fillMaxWidth())
+                AppInput(vehicle,{vehicle=it},"المركبة",modifier=Modifier.fillMaxWidth())
+                AppInput(area,{area=it},"منطقة العمل",modifier=Modifier.fillMaxWidth())
+            }},
+            confirmButton={ TextButton(onClick={ if(name.isNotBlank()&&phone.isNotBlank()){
+                val value=current?.copy(name=name.trim(),phone=phone.trim(),vehicle=vehicle.trim(),workingArea=area.trim()) ?: DriverProfileEntity(name=name.trim(),phone=phone.trim(),vehicle=vehicle.trim(),workingArea=area.trim(),status=DriverStatus.OFFLINE)
+                if(current==null) onAddDriver(value) else onUpdateDriver(value)
+                showAdd=false; editing=null
+            }}){Text("حفظ")}},
+            dismissButton={TextButton(onClick={showAdd=false;editing=null}){Text("إلغاء")}})
+    }
 }
-
 @Composable
 fun AdminHomeBuilderTab(
     sections: List<HomeSectionEntity>,
