@@ -57,6 +57,7 @@ fun FalsareeApp(
     val customerOrders by viewModel.customerOrders.collectAsStateWithLifecycle()
     val addresses by viewModel.customerAddresses.collectAsStateWithLifecycle()
     val tickets by viewModel.customerTickets.collectAsStateWithLifecycle()
+    val activeDriverOfferEvents by viewModel.activeDriverOfferEvents.collectAsStateWithLifecycle()
     val activityLogs by viewModel.repository.recentActivityLogs.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val notifications by remember(currentSession, currentRole) {
@@ -328,7 +329,7 @@ fun FalsareeApp(
                                 it.driverId == activeDriver?.id &&
                                     it.deliveryStatus != com.example.core.model.DeliveryStatus.DELIVERED
                             }
-                            val activeOfferOrderIds = viewModel.activeDriverOfferEvents
+                            val activeOfferOrderIds = activeDriverOfferEvents
                                 .map { it.orderId }
                                 .toSet()
                             val openOrders = orders.filter {
