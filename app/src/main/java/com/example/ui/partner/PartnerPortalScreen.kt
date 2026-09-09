@@ -116,12 +116,7 @@ fun PartnerPortalScreen(
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-
- fix/identity-hardening
-
-                if (BuildConfig.DEBUG) {
                 // Partner Switcher (To easily test Restaurant vs Pharmacy vs Cafe vs Store)
- main
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -164,7 +159,6 @@ fun PartnerPortalScreen(
                             colors = SwitchDefaults.colors(checkedThumbColor = StatusGreen)
                         )
                     }
-                }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
