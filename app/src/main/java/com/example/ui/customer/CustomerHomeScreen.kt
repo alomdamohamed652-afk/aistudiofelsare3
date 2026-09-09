@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -518,7 +520,11 @@ fun PartnerCard(
                         .background(SurfaceBackground),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = partner.logoEmoji, fontSize = 24.sp)
+                    if (partner.imageUrl.isNotBlank()) {
+                        AsyncImage(model = partner.imageUrl, contentDescription = partner.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    } else {
+                        Text(text = partner.logoEmoji, fontSize = 24.sp)
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -641,7 +647,11 @@ fun FeaturedProductsSection(
                                 .background(SurfaceBackground),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = product.imageEmoji, fontSize = 38.sp)
+                            if (product.imageUrl.isNotBlank()) {
+                                AsyncImage(model = product.imageUrl, contentDescription = product.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            } else {
+                                Text(text = product.imageEmoji, fontSize = 38.sp)
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
