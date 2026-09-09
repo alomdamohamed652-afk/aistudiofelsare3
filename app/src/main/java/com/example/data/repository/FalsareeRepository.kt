@@ -105,7 +105,8 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         customerNotes: String,
         paymentMethod: PaymentMethod,
         appliedDiscount: Double = 0.0,
-        transferReceiptNote: String = ""
+        transferReceiptNote: String = "",
+        transferReceiptUri: String = ""
     ): Result<Long> = withContext(Dispatchers.IO) {
         try {
             if (items.isEmpty()) return@withContext Result.failure(IllegalArgumentException("السلة فارغة"))
@@ -138,6 +139,7 @@ class FalsareeRepository(private val dao: FalsareeDao) {
                 paymentMethod = paymentMethod,
                 paymentStatus = paymentStatus,
                 transferReceiptNote = transferReceiptNote,
+                transferReceiptUri = transferReceiptUri,
                 deliveryAddress = deliveryAddress,
                 subtotal = subtotal,
                 deliveryFee = partner.deliveryFee,
