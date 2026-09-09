@@ -1,5 +1,7 @@
 package com.example.ui.customer
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -32,13 +34,13 @@ import com.example.data.local.ProductEntity
 fun CartCheckoutScreen(
     partner: PartnerEntity?,
     cartItems: Map<ProductEntity, Int>,
-    cartOptions: Map<Long, String>,
+    cartOptions: Map<ProductEntity, String>,
     appliedCoupon: CouponEntity?,
     discountAmount: Double,
     addresses: List<CustomerAddressEntity>,
     onUpdateQuantity: (ProductEntity, Int) -> Unit,
     onApplyCoupon: (String) -> Unit,
-    onConfirmOrder: (address: String, notes: String, payment: PaymentMethod, receiptNote: String) -> Unit,
+    onConfirmOrder: (address: String, notes: String, payment: PaymentMethod, receiptNote: String, receiptUri: String) -> Unit,
     onBack: () -> Unit,
     onClearCart: () -> Unit,
     modifier: Modifier = Modifier
@@ -49,8 +51,13 @@ fun CartCheckoutScreen(
     }
     var orderNotes by remember { mutableStateOf("") }
     var selectedPaymentMethod by remember { mutableStateOf(PaymentMethod.CASH_ON_DELIVERY) }
-    var transferReceiptNote by remember { mutableStateOf("تم التحويل عبر انستاباي بنجاح") }
-    var isReceiptSimulatedAttached by remember { mutableStateOf(false) }
+    var transferReceiptNote by remember { mutableStateOf("") }
+    var transferReceiptUri by remember { mutableStateOf<String?>(null) }
+    val receiptImagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        transferReceiptUri = uri?.toString()
+    }
 
     val subtotal = remember(cartItems) {
         cartItems.entries.sumOf { it.key.price * it.value }
@@ -97,7 +104,7 @@ fun CartCheckoutScreen(
                         AppButton(
                             text = "تأكيد وإرسال الطلب (${total.toInt()} ج.م) ⚡",
                             onClick = {
-                                onConfirmOrder(selectedAddressText, orderNotes, selectedPaymentMethod, transferReceiptNote)
+                                onConfirmOrder(selectedAddressText, orderNotes, selectedPaymentMethod, transferReceiptNote, transferReceiptUri.orEmpty())
                             },
                             modifier = Modifier.fillMaxWidth(),
                             testTag = "cart_confirm_order_btn"
@@ -188,7 +195,7 @@ fun CartCheckoutScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(product.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                val opt = cartOptions[product.id]
+                                val opt = cartOptions[product]
                                 if (!opt.isNullOrEmpty()) {
                                     Text(opt, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                                 }
@@ -364,7 +371,7 @@ fun CartCheckoutScreen(
                                 Text("🏦 تحويل إلكتروني (InstaPay / محفظة إلكترونية)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             }
 
-                            // If Bank Transfer, show transfer instructions & receipt upload simulation
+                            // If Bank Transfer, collect a real image URI instead of simulating an attachment.
                             if (selectedPaymentMethod == PaymentMethod.BANK_TRANSFER) {
                                 Card(
                                     modifier = Modifier
@@ -381,8 +388,8 @@ fun CartCheckoutScreen(
                                         AppInput(
                                             value = transferReceiptNote,
                                             onValueChange = { transferReceiptNote = it },
-                                            label = "رقم العملية المرجعي أو تفاصيل الإيصال",
-                                            placeholder = "مثال: تم التحويل من رقم 010... رقم مرجعي 1234",
+                                            label = "رقم العملية المرجعي (اختياري)",
+                                            placeholder = "مثال: رقم مرجعي 1234",
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                         Spacer(modifier = Modifier.height(6.dp))
@@ -392,13 +399,13 @@ fun CartCheckoutScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = if (isReceiptSimulatedAttached) "تم إرفاق صورة الإيصال بنجاح 📎" else "إرفاق صورة إشعار التحويل:",
+                                                text = if (transferReceiptUri != null) "تم إرفاق صورة الإيصال بنجاح 📎" else "إرفاق صورة إشعار التحويل (مطلوب):",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = if (isReceiptSimulatedAttached) StatusGreen else TextSecondary,
+                                                color = if (transferReceiptUri != null) StatusGreen else TextSecondary,
                                                 fontWeight = FontWeight.Bold
                                             )
-                                            TextButton(onClick = { isReceiptSimulatedAttached = !isReceiptSimulatedAttached }) {
-                                                Text(if (isReceiptSimulatedAttached) "تغيير" else "إرفاق صورة 📸", style = MaterialTheme.typography.labelSmall)
+                                            TextButton(onClick = { receiptImagePicker.launch("image/*") }) {
+                                                Text(if (transferReceiptUri != null) "تغيير الصورة" else "اختيار صورة 📸", style = MaterialTheme.typography.labelSmall)
                                             }
                                         }
                                     }
