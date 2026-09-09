@@ -27,6 +27,7 @@ import com.example.core.model.UserRole
 import com.example.data.local.PartnerEntity
 import com.example.data.local.OrderEntity
 import com.example.data.local.ProductEntity
+import com.example.data.local.PartnerCategoryEntity
 
 @Composable
 fun PartnerPortalScreen(
@@ -34,6 +35,7 @@ fun PartnerPortalScreen(
     activePartner: PartnerEntity?,
     orders: List<OrderEntity>,
     products: List<ProductEntity>,
+    categories: List<PartnerCategoryEntity>,
     onSelectPartner: (Long) -> Unit,
     onToggleOpen: (Boolean) -> Unit,
     onAcceptOrder: (OrderEntity) -> Unit,
@@ -41,6 +43,8 @@ fun PartnerPortalScreen(
     onStartPreparing: (OrderEntity, prepMinutes: Int) -> Unit,
     onReadyForPickup: (OrderEntity) -> Unit,
     onSaveProduct: (ProductEntity) -> Unit,
+    onSaveCategory: (PartnerCategoryEntity) -> Unit,
+    onDeleteCategory: (PartnerCategoryEntity) -> Unit,
     onDeleteProduct: (ProductEntity) -> Unit,
     onUpdateProductStatus: (Long, ProductStatus) -> Unit,
     onSwitchRole: (UserRole) -> Unit,
@@ -49,6 +53,8 @@ fun PartnerPortalScreen(
     var partnerTab by remember { mutableIntStateOf(0) } // 0: Orders Queue, 1: Products Menu, 2: Reports
     var showAddProductDialog by remember { mutableStateOf(false) }
     var editingProduct by remember { mutableStateOf<ProductEntity?>(null) }
+    var showCategoryDialog by remember { mutableStateOf(false) }
+    var editingCategory by remember { mutableStateOf<PartnerCategoryEntity?>(null) }
 
     val partnerOrders = remember(orders, activePartner) {
         if (activePartner == null) emptyList()
@@ -331,13 +337,19 @@ fun PartnerPortalScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("قائمة الأصناف والمخزون (${products.size}) 🍔", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            AppButton(text = "+ صنف جديد", onClick = { showAddProductDialog = true })
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("المنيو والأقسام (${products.size}) 🍔", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedButton(onClick = { editingCategory = null; showCategoryDialog = true }) { Text("+ قسم") }
+                                AppButton(text = "+ صنف", onClick = { editingProduct = null; showAddProductDialog = true })
+                            }
+                        }
+                        if (categories.isNotEmpty()) {
+                            item { LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(categories) { category ->
+                                    FilterChip(selected = category.active, onClick = { editingCategory = category; showCategoryDialog = true }, label = { Text(category.name) })
+                                }
+                            }}
                         }
                     }
 
@@ -451,6 +463,26 @@ fun PartnerPortalScreen(
                 showAddProductDialog = false; editingProduct = null
             }) },
             dismissButton = { TextButton(onClick = { showAddProductDialog = false; editingProduct = null }) { Text("إلغاء") } }
+        )
+    }
+    if (showCategoryDialog && activePartner != null) {
+        val existing = editingCategory
+        var categoryName by remember(existing) { mutableStateOf(existing?.name ?: "") }
+        var imageUrl by remember(existing) { mutableStateOf(existing?.imageUrl ?: "") }
+        AlertDialog(onDismissRequest = { showCategoryDialog = false; editingCategory = null },
+            title = { Text(if (existing == null) "إضافة قسم" else "تعديل القسم") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppInput(value = categoryName, onValueChange = { categoryName = it }, label = "اسم القسم")
+                AppInput(value = imageUrl, onValueChange = { imageUrl = it }, label = "رابط صورة القسم (اختياري)")
+                if (existing != null) OutlinedButton(onClick = { onDeleteCategory(existing); showCategoryDialog = false; editingCategory = null }) { Text("حذف القسم") }
+            }},
+            confirmButton = { AppButton(text = "حفظ القسم", onClick = {
+                if (categoryName.isBlank()) return@AppButton
+                val base = existing ?: PartnerCategoryEntity(partnerId = activePartner.id, name = categoryName, sortOrder = categories.size)
+                onSaveCategory(base.copy(partnerId = activePartner.id, name = categoryName, imageUrl = imageUrl))
+                showCategoryDialog = false; editingCategory = null
+            }) },
+            dismissButton = { TextButton(onClick = { showCategoryDialog = false; editingCategory = null }) { Text("إلغاء") } }
         )
     }
 
