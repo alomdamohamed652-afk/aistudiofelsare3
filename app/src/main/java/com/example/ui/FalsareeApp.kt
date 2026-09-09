@@ -583,7 +583,7 @@ fun CustomerPortalView(
     onUpdateCartQty: (product: com.example.data.local.ProductEntity, delta: Int) -> Unit,
     onApplyCoupon: (String) -> Unit,
     onClearCart: () -> Unit,
-    onConfirmOrder: (address: String, notes: String, payment: com.example.core.model.PaymentMethod, receiptNote: String) -> Unit,
+    onConfirmOrder: (address: String, notes: String, payment: com.example.core.model.PaymentMethod, receiptNote: String, receiptUri: String) -> Unit,
     onSelectOrderToTrack: (Long) -> Unit,
     favoritePartnerIds: List<Long> = emptyList(),
     onToggleFavorite: (Long) -> Unit = {},
