@@ -32,6 +32,7 @@ fun AdminPortalScreen(
     orders: List<OrderEntity>,
     partners: List<PartnerEntity>,
     drivers: List<DriverProfileEntity>,
+    driverAccounts: List<UserEntity>,
     homeSections: List<HomeSectionEntity>,
     onboardingPages: List<OnboardingPageEntity>,
     appSettings: AppSettingsEntity?,
@@ -44,6 +45,7 @@ fun AdminPortalScreen(
     onAddDriver: (DriverProfileEntity) -> Unit,
     onUpdateDriver: (DriverProfileEntity) -> Unit,
     onDeleteDriver: (DriverProfileEntity) -> Unit,
+    onSetAccountActivation: (userId: Long, active: Boolean, reason: String) -> Unit,
     onSaveHomeSection: (HomeSectionEntity) -> Unit,
     onDeleteHomeSection: (HomeSectionEntity) -> Unit,
     onSaveOnboardingPage: (OnboardingPageEntity) -> Unit,
@@ -185,7 +187,9 @@ fun AdminPortalScreen(
                     onToggleDriverStatus = onToggleDriverStatus,
                     onAddDriver = onAddDriver,
                     onUpdateDriver = onUpdateDriver,
-                    onDeleteDriver = onDeleteDriver
+                    onDeleteDriver = onDeleteDriver,
+                    driverAccounts = driverAccounts,
+                    onSetAccountActivation = onSetAccountActivation
                 )
                 4 -> AdminHomeBuilderTab(
                     sections = homeSections,
@@ -590,7 +594,9 @@ fun AdminDriversTab(
     onToggleDriverStatus: (driverId: Long, status: DriverStatus) -> Unit,
     onAddDriver: (DriverProfileEntity) -> Unit,
     onUpdateDriver: (DriverProfileEntity) -> Unit,
-    onDeleteDriver: (DriverProfileEntity) -> Unit
+    onDeleteDriver: (DriverProfileEntity) -> Unit,
+    driverAccounts: List<UserEntity>,
+    onSetAccountActivation: (userId: Long, active: Boolean, reason: String) -> Unit
 ) {
     var editing by remember { mutableStateOf<DriverProfileEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
@@ -599,6 +605,21 @@ fun AdminDriversTab(
             Text("إدارة المناديب وأسطول التوصيل (" + drivers.size + ") 🛵", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             AppButton(text = "+ إضافة مندوب", onClick = { showAdd = true })
         }}
+        if (driverAccounts.isNotEmpty()) {
+            item { Text("حسابات المناديب والتفعيل", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall) }
+            items(driverAccounts.filter { !it.isActive }) { account ->
+                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard)) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(account.name, fontWeight = FontWeight.Bold)
+                        Text(account.phone + " • " + account.activationStatus, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AppButton(text = "تفعيل الحساب", onClick = { onSetAccountActivation(account.id, true, "") }, modifier = Modifier.weight(1f))
+                            OutlinedButton(onClick = { onSetAccountActivation(account.id, false, "مرفوض من الإدارة") }, modifier = Modifier.weight(1f)) { Text("رفض") }
+                        }
+                    }
+                }
+            }
+        }
         items(drivers) { driver ->
             Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = SurfaceCard), border = androidx.compose.foundation.BorderStroke(1.dp, SurfaceBorder)) {
                 Column(modifier = Modifier.padding(14.dp)) {
