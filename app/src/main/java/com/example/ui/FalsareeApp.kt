@@ -562,6 +562,8 @@ fun CustomerPortalView(
     addresses: List<com.example.data.local.CustomerAddressEntity>,
     coupons: List<com.example.data.local.CouponEntity>,
     tickets: List<com.example.data.local.SupportTicketEntity>,
+    currentSession: com.example.core.model.UserSession?,
+    onLogout: () -> Unit,
     orders: List<com.example.data.local.OrderEntity>,
     searchQuery: String,
     onQueryChange: (String) -> Unit,
