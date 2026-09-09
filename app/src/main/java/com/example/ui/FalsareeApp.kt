@@ -329,12 +329,7 @@ fun FalsareeApp(
                                 onAcceptOrder = { ord ->
                                     if (activeDriver != null) {
                                         coroutineScope.launch {
-                                            viewModel.repository.assignDriverToOrder(
-                                                orderId = ord.id,
-                                                driver = activeDriver,
-                                                actor = activeDriver.name,
-                                                actorRole = "المندوب"
-                                            )
+                                            viewModel.repository.acceptDriverOffer(ord.id, activeDriver.id)
                                         }
                                     }
                                 },
