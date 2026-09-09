@@ -176,6 +176,10 @@ data class CustomerAddressEntity(
     val floor: String,
     val apartment: String,
     val notes: String = "",
+    // GPS fields are optional locally and ready for Maps/GPS integration.
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val formattedAddress: String = "",
     val isDefault: Boolean = false
 )
 
