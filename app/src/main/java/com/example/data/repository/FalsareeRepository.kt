@@ -421,6 +421,47 @@ class FalsareeRepository(private val dao: FalsareeDao) {
         Result.success(Unit)
     }
 
+    /**
+     * Sequential dispatch foundation: the first eligible driver receives an offer.
+     * Final assignment happens only after that driver accepts.
+     */
+    suspend fun offerOrderToNextDriver(orderId: Long, shiftName: String): Result<DriverProfileEntity> =
+        withContext(Dispatchers.IO) {
+            val order = dao.getOrderById(orderId)
+                ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+            val driver = getNextEligibleDriver(shiftName)
+                ?: return@withContext Result.failure(IllegalStateException("لا يوجد مندوب متاح حاليًا"))
+            recordDriverDispatchEvent(orderId, driver.id, "OFFERED", "Sequential queue")
+            dao.getUserByAssociatedDriverId(driver.id)?.let { user ->
+                dao.insertNotification(NotificationEntity(
+                    targetUserId = user.id,
+                    targetRole = UserRole.DRIVER,
+                    category = NotificationCategory.ORDER,
+                    title = "عرض طلب جديد",
+                    message = "لديك طلب جديد " + order.orderNumber + ". يرجى القبول أو الرفض.",
+                    relatedOrderId = orderId
+                ))
+            }
+            Result.success(driver)
+        }
+
+    suspend fun acceptDriverOffer(orderId: Long, driverId: Long): Result<Unit> = withContext(Dispatchers.IO) {
+        val driver = dao.getDriverById(driverId)
+            ?: return@withContext Result.failure(Exception("المندوب غير موجود"))
+        val order = dao.getOrderById(orderId)
+            ?: return@withContext Result.failure(Exception("الطلب غير موجود"))
+        if (order.driverId != null && order.driverId != driverId)
+            return@withContext Result.failure(IllegalStateException("تم قبول الطلب بواسطة مندوب آخر"))
+        recordDriverDispatchEvent(orderId, driverId, "ACCEPTED")
+        assignDriverToOrder(orderId, driver, driver.name, "DRIVER")
+    }
+
+    suspend fun rejectDriverOffer(orderId: Long, driverId: Long, reason: String, shiftName: String): Result<DriverProfileEntity> =
+        withContext(Dispatchers.IO) {
+            recordDriverDispatchEvent(orderId, driverId, "REJECTED", reason)
+            offerOrderToNextDriver(orderId, shiftName)
+        }
+
     suspend fun assignDriverToOrder(
         orderId: Long,
         driver: DriverProfileEntity,
