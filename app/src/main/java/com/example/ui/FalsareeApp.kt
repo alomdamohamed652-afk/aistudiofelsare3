@@ -348,6 +348,9 @@ fun FalsareeApp(
                                 openOrders = openOrders,
                                 driverOrders = driverOrders,
                                 payoutRequests = driverPayoutRequests,
+                                shiftAssignment = activeDriver?.let { driver ->
+                                    driverShiftAssignments.firstOrNull { it.driverId == driver.id }
+                                },
                                 onRequestPayout = { amt -> viewModel.requestDriverPayout(amt) },
                                 onToggleAvailability = { st ->
                                     activeDriver?.let { viewModel.setDriverAvailability(it.id, st) }
