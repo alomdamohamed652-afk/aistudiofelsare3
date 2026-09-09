@@ -63,8 +63,6 @@ class FalsareeRepository(private val dao: FalsareeDao) {
     val driverShiftAssignments: Flow<List<DriverShiftAssignmentEntity>> =
         dao.getAllDriverShiftAssignments()
 
-    val driverShiftAssignments: Flow<List<DriverShiftAssignmentEntity>> = dao.getAllDriverShiftAssignments()
-
     /**
      * Hybrid dispatch foundation: the next eligible driver is selected by the
      * configured shift queue. Busy, inactive, or forced-break drivers are skipped.
