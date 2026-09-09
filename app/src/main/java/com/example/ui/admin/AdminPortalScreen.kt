@@ -615,6 +615,7 @@ fun AdminDriversTab(
 ) {
     var editing by remember { mutableStateOf<DriverProfileEntity?>(null) }
     var showAdd by remember { mutableStateOf(false) }
+    var shiftEditingDriver by remember { mutableStateOf<DriverProfileEntity?>(null) }
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("إدارة المناديب وأسطول التوصيل (" + drivers.size + ") 🛵", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -645,7 +646,7 @@ fun AdminDriversTab(
                     Text(driver.name + " — " + (assignment?.shiftName ?: "بدون شيفت"), fontWeight = FontWeight.Bold)
                     Text("ترتيب الدور: " + (assignment?.queuePosition?.toString() ?: "-"), style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onAssignShift(driver.id, assignment?.shiftName ?: "الصباح", (assignment?.queuePosition ?: 0) + 1) }, modifier = Modifier.weight(1f)) { Text("تعديل الشيفت/الدور") }
+                        OutlinedButton(onClick = { shiftEditingDriver = driver }, modifier = Modifier.weight(1f)) { Text("تعديل الشيفت/الدور") }
                         OutlinedButton(onClick = { onSetShiftActive(driver.id, !(assignment?.active ?: false)) }, modifier = Modifier.weight(1f)) { Text(if (assignment?.active == true) "إيقاف من الدور" else "تفعيل في الدور") }
                     }
                 }
@@ -675,6 +676,33 @@ fun AdminDriversTab(
             }
         }
     }
+    shiftEditingDriver?.let { driver ->
+        val assignment = shiftAssignments.firstOrNull { it.driverId == driver.id }
+        var shiftName by remember(driver.id) { mutableStateOf(assignment?.shiftName ?: "الصباح") }
+        var queuePositionText by remember(driver.id) { mutableStateOf((assignment?.queuePosition ?: 1).toString()) }
+        AlertDialog(
+            onDismissRequest = { shiftEditingDriver = null },
+            title = { Text("إعدادات شيفت المندوب") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(driver.name, fontWeight = FontWeight.Bold)
+                    AppInput(shiftName, { shiftName = it }, "اسم الشيفت", modifier = Modifier.fillMaxWidth())
+                    AppInput(queuePositionText, { queuePositionText = it.filter(Char::isDigit) }, "ترتيب الدور", modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val position = queuePositionText.toIntOrNull()?.takeIf { it > 0 } ?: 1
+                    if (shiftName.isNotBlank()) {
+                        onAssignShift(driver.id, shiftName.trim(), position)
+                        shiftEditingDriver = null
+                    }
+                }) { Text("حفظ") }
+            },
+            dismissButton = { TextButton(onClick = { shiftEditingDriver = null }) { Text("إلغاء") } }
+        )
+    }
+
     if (showAdd || editing != null) {
         val current = editing
         var name by remember(current) { mutableStateOf(current?.name ?: "") }
