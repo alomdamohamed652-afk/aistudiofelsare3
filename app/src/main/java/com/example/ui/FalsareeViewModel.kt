@@ -102,11 +102,8 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     private val _cartPartner = MutableStateFlow<PartnerEntity?>(null)
     val cartPartner: StateFlow<PartnerEntity?> = _cartPartner.asStateFlow()
 
-    private val _cartItems = MutableStateFlow<Map<ProductEntity, Int>>(emptyMap())
-    val cartItems: StateFlow<Map<ProductEntity, Int>> = _cartItems.asStateFlow()
-
-    private val _cartOptions = MutableStateFlow<Map<Long, String>>(emptyMap()) // productId to options text
-    val cartOptions: StateFlow<Map<Long, String>> = _cartOptions.asStateFlow()
+    private val _cartItems = MutableStateFlow<List<CartItem>>(emptyList())
+    val cartItems: StateFlow<List<CartItem>> = _cartItems.asStateFlow()
 
     private val _appliedCoupon = MutableStateFlow<CouponEntity?>(null)
     val appliedCoupon: StateFlow<CouponEntity?> = _appliedCoupon.asStateFlow()
@@ -240,48 +237,60 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
     }
 
     // --- Cart Management ---
-    fun addToCart(partner: PartnerEntity, product: ProductEntity, quantity: Int, optionsSummary: String = "") {
+    fun addToCart(
+        partner: PartnerEntity,
+        product: ProductEntity,
+        quantity: Int,
+        selection: CartSelection = CartSelection()
+    ) {
+        if (quantity <= 0) return
+
         val currentPartner = _cartPartner.value
+        val newItem = CartItem(
+            productId = product.id,
+            productName = product.name,
+            imageEmoji = product.imageEmoji,
+            baseUnitPrice = product.price,
+            quantity = quantity,
+            selection = selection
+        )
+
         if (currentPartner != null && currentPartner.id != partner.id) {
-            // Violation of Single-Partner Rule
-            _alertMessage.value = "لا يمكن الطلب من شريكين مختلفين في نفس السلة. تم إفراغ السلة السابقة وبدء سلة جديدة من ${partner.name}."
+            _alertMessage.value = "لا يمكن الطلب من شريكين مختلفين في نفس السلة. تم بدء سلة جديدة من ${partner.name}."
             _cartPartner.value = partner
-            _cartItems.value = mapOf(product to quantity)
-            _cartOptions.value = mapOf(product.id to optionsSummary)
+            _cartItems.value = listOf(newItem)
             _appliedCoupon.value = null
             _discountAmount.value = 0.0
             return
         }
 
         _cartPartner.value = partner
-        val currentMap = _cartItems.value.toMutableMap()
-        val currentQty = currentMap[product] ?: 0
-        currentMap[product] = currentQty + quantity
-        _cartItems.value = currentMap
-
-        if (optionsSummary.isNotEmpty()) {
-            val optMap = _cartOptions.value.toMutableMap()
-            optMap[product.id] = optionsSummary
-            _cartOptions.value = optMap
+        val currentItems = _cartItems.value.toMutableList()
+        val existingIndex = currentItems.indexOfFirst { it.key == newItem.key }
+        if (existingIndex >= 0) {
+            val existing = currentItems[existingIndex]
+            currentItems[existingIndex] = existing.copy(quantity = existing.quantity + quantity)
+        } else {
+            currentItems.add(newItem)
         }
+        _cartItems.value = currentItems
         _alertMessage.value = "تمت إضافة ${product.name} إلى السلة ⚡"
     }
 
-    fun updateCartItemQuantity(product: ProductEntity, delta: Int) {
-        val currentMap = _cartItems.value.toMutableMap()
-        val currentQty = currentMap[product] ?: return
-        val newQty = currentQty + delta
-        if (newQty <= 0) {
-            currentMap.remove(product)
-            val optMap = _cartOptions.value.toMutableMap()
-            optMap.remove(product.id)
-            _cartOptions.value = optMap
-        } else {
-            currentMap[product] = newQty
-        }
-        _cartItems.value = currentMap
+    fun updateCartItemQuantity(itemKey: String, delta: Int) {
+        val currentItems = _cartItems.value.toMutableList()
+        val index = currentItems.indexOfFirst { it.key == itemKey }
+        if (index < 0) return
 
-        if (currentMap.isEmpty()) {
+        val updatedQuantity = currentItems[index].quantity + delta
+        if (updatedQuantity <= 0) {
+            currentItems.removeAt(index)
+        } else {
+            currentItems[index] = currentItems[index].copy(quantity = updatedQuantity)
+        }
+        _cartItems.value = currentItems
+
+        if (currentItems.isEmpty()) {
             _cartPartner.value = null
             _appliedCoupon.value = null
             _discountAmount.value = 0.0
@@ -290,15 +299,14 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
 
     fun clearCart() {
         _cartPartner.value = null
-        _cartItems.value = emptyMap()
-        _cartOptions.value = emptyMap()
+        _cartItems.value = emptyList()
         _appliedCoupon.value = null
         _discountAmount.value = 0.0
     }
 
     fun applyCoupon(code: String) {
         viewModelScope.launch {
-            val subtotal = _cartItems.value.entries.sumOf { it.key.price * it.value }
+            val subtotal = _cartItems.value.sumOf { it.totalPrice }
             val result = repository.validateCoupon(code, subtotal)
             result.onSuccess { (coupon, discount) ->
                 _appliedCoupon.value = coupon
@@ -319,8 +327,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
         transferReceiptNote: String = ""
     ) {
         val partner = _cartPartner.value ?: return
-        val itemsList = _cartItems.value.map { Pair(it.key, it.value) }
-        val optionsSummary = _cartOptions.value.values.joinToString(", ")
+        val itemsList = _cartItems.value
 
         viewModelScope.launch {
             val customerId = currentSession.value?.associatedCustomerId
@@ -334,7 +341,6 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
                 customerPhone = customerPhone,
                 partner = partner,
                 items = itemsList,
-                optionsNotes = optionsSummary,
                 deliveryAddress = deliveryAddress,
                 customerNotes = customerNotes,
                 paymentMethod = paymentMethod,
@@ -344,7 +350,7 @@ class FalsareeViewModel(application: Application) : AndroidViewModel(application
             res.onSuccess { orderId ->
                 clearCart()
                 _trackedOrderId.value = orderId
-                _customerSelectedTab.value = 2 // Go to Orders tab
+                _customerSelectedTab.value = 2
                 _selectedPartner.value = null
                 _alertMessage.value = "تم تأكيد طلبك بنجاح! يوصلك فالسريع ⚡"
             }.onFailure { error ->
