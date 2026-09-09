@@ -325,4 +325,10 @@ interface FalsareeDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDriverDispatchEvent(event: DriverDispatchEventEntity): Long
 
+    @Query("SELECT * FROM driver_performance WHERE driverId = :driverId LIMIT 1")
+    suspend fun getDriverPerformance(driverId: Long): DriverPerformanceEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDriverPerformance(performance: DriverPerformanceEntity)
+
 }
