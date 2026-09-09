@@ -313,8 +313,14 @@ interface FalsareeDao {
     @Query("SELECT COUNT(*) FROM driver_dispatch_events WHERE driverId = :driverId AND eventType = :eventType")
     suspend fun countDriverDispatchEvents(driverId: Long, eventType: String): Int
 
-    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND driverId = :driverId AND eventType = 'OFFERED' ORDER BY createdAt DESC LIMIT 1")
+    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND driverId = :driverId AND eventType IN ('OFFERED', 'BROADCAST_OFFER') ORDER BY createdAt DESC LIMIT 1")
     suspend fun getLatestDriverOffer(orderId: Long, driverId: Long): DriverDispatchEventEntity?
+
+    @Query("SELECT * FROM driver_dispatch_events WHERE orderId = :orderId AND eventType IN ('OFFERED', 'BROADCAST_OFFER') ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getLatestOrderOffer(orderId: Long): DriverDispatchEventEntity?
+
+    @Query("UPDATE orders SET driverId = :driverId, driverName = :driverName, driverPhone = :driverPhone, deliveryStatus = 'DRIVER_ASSIGNED', updatedAt = :updatedAt WHERE id = :orderId AND driverId IS NULL AND deliveryStatus = 'WAITING_FOR_DRIVER' AND orderStatus NOT IN ('CANCELLED', 'REJECTED', 'DELIVERED')")
+    suspend fun claimUnassignedOrder(orderId: Long, driverId: Long, driverName: String, driverPhone: String, updatedAt: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDriverDispatchEvent(event: DriverDispatchEventEntity): Long
