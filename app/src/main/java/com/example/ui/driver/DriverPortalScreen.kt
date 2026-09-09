@@ -27,6 +27,7 @@ import com.example.core.model.OrderStatus
 import com.example.core.model.UserRole
 import com.example.data.local.DriverPayoutRequestEntity
 import com.example.data.local.DriverProfileEntity
+import com.example.data.local.DriverShiftAssignmentEntity
 import com.example.data.local.OrderEntity
 
 @Composable
@@ -36,6 +37,7 @@ fun DriverPortalScreen(
     openOrders: List<OrderEntity>,
     driverOrders: List<OrderEntity> = emptyList(),
     payoutRequests: List<DriverPayoutRequestEntity> = emptyList(),
+    shiftAssignment: DriverShiftAssignmentEntity? = null,
     onRequestPayout: (Double) -> Unit = {},
     onToggleAvailability: (DriverStatus) -> Unit,
     onAcceptOrder: (OrderEntity) -> Unit,
@@ -193,6 +195,40 @@ fun DriverPortalScreen(
                                 Text("التقييم", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f))
                                 Text(driver?.rating?.let { "⭐ $it" } ?: "—", fontWeight = FontWeight.Bold, color = Color.White, style = MaterialTheme.typography.bodyMedium)
                             }
+                        }
+                    }
+                }
+            }
+
+            shiftAssignment?.let { assignment ->
+                val now = System.currentTimeMillis()
+                val breakActive = assignment.forcedBreakUntil > now
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.08f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("الشيفت", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                            Text(assignment.shiftName, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("ترتيب الدور", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                            Text(if (assignment.active) "#${assignment.queuePosition}" else "غير نشط", color = DriverAccentYellow, fontWeight = FontWeight.Bold)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("الحالة", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                if (breakActive) "استراحة" else if (assignment.active) "نشط" else "خارج الدور",
+                                color = if (breakActive) DriverAccentYellow else Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
