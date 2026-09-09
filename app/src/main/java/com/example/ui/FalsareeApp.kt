@@ -264,10 +264,22 @@ fun FalsareeApp(
                                         viewModel.repository.setPartnerOpenStatus(id, isOpen)
                                     }
                                 },
+                                onSavePartner = { partner ->
+                                    coroutineScope.launch { viewModel.repository.savePartner(partner) }
+                                },
+                                onDeletePartner = { partner ->
+                                    coroutineScope.launch { viewModel.repository.deletePartner(partner) }
+                                },
                                 onToggleDriverStatus = { id, st ->
                                     coroutineScope.launch {
                                         viewModel.repository.setDriverAvailability(id, st)
                                     }
+                                },
+                                onSaveDriver = { driver ->
+                                    coroutineScope.launch { viewModel.repository.saveDriver(driver) }
+                                },
+                                onDeleteDriver = { driver ->
+                                    coroutineScope.launch { viewModel.repository.deleteDriver(driver) }
                                 },
                                 onSaveHomeSection = { sec ->
                                     coroutineScope.launch { viewModel.repository.saveHomeSection(sec) }
