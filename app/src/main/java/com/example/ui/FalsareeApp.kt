@@ -58,7 +58,6 @@ fun FalsareeApp(
     val addresses by viewModel.customerAddresses.collectAsStateWithLifecycle()
     val tickets by viewModel.customerTickets.collectAsStateWithLifecycle()
     val activeDriverOfferEvents by viewModel.activeDriverOfferEvents.collectAsStateWithLifecycle()
-    val driverPerformance by viewModel.driverPerformance.collectAsStateWithLifecycle()
     val activityLogs by viewModel.repository.recentActivityLogs.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val notifications by remember(currentSession, currentRole) {
@@ -347,7 +346,6 @@ fun FalsareeApp(
                             DriverPortalScreen(
                                 driver = activeDriver,
                                 activeOrder = driverActiveOrder,
-                                driverPerformance = driverPerformance,
                                 openOrders = openOrders,
                                 offerExpiryByOrderId = activeDriverOfferEvents
                                     .groupBy { it.orderId }
