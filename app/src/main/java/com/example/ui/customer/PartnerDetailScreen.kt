@@ -22,6 +22,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.designsystem.*
+import com.example.core.model.CartAddon
+import com.example.core.model.CartSelection
 import com.example.data.local.PartnerEntity
 import com.example.data.local.ProductEntity
 
@@ -31,7 +33,7 @@ fun PartnerDetailScreen(
     partner: PartnerEntity,
     products: List<ProductEntity>,
     onBack: () -> Unit,
-    onAddToCart: (ProductEntity, Int, String) -> Unit,
+    onAddToCart: (ProductEntity, Int, CartSelection) -> Unit,
     onViewCart: () -> Unit,
     cartItemCount: Int,
     modifier: Modifier = Modifier
@@ -320,24 +322,33 @@ fun PartnerDetailScreen(
     if (productForSheet != null) {
         val prod = productForSheet!!
         var quantity by remember { mutableIntStateOf(1) }
-        var selectedSize by remember { mutableStateOf("عادي") }
+        var selectedSize by remember(prod) { mutableStateOf("") }
         var sizePriceOffset by remember { mutableDoubleStateOf(0.0) }
-        val selectedAddons = remember { mutableStateListOf<String>() }
+        val selectedAddons = remember(prod) { mutableStateListOf<CartAddon>() }
         var specialNotes by remember { mutableStateOf("") }
 
         // Parse sizes
         val sizeOptions = remember(prod) {
             prod.sizesString.split(",").mapNotNull {
-                val parts = it.split(":")
-                if (parts.size == 2) Pair(parts[0], parts[1].toDoubleOrNull() ?: 0.0) else null
+                val parts = it.split(":", limit = 2)
+                val name = parts.getOrNull(0)?.trim().orEmpty()
+                if (name.isBlank()) null else Pair(name, parts.getOrNull(1)?.trim()?.toDoubleOrNull() ?: 0.0)
             }
         }
 
         // Parse addons
         val addonOptions = remember(prod) {
             prod.addonsString.split(",").mapNotNull {
-                val parts = it.split(":")
-                if (parts.size == 2) Pair(parts[0], parts[1].toDoubleOrNull() ?: 0.0) else null
+                val parts = it.split(":", limit = 2)
+                val name = parts.getOrNull(0)?.trim().orEmpty()
+                if (name.isBlank()) null else CartAddon(name, parts.getOrNull(1)?.trim()?.toDoubleOrNull() ?: 0.0)
+            }
+        }
+
+        LaunchedEffect(sizeOptions) {
+            if (selectedSize.isBlank() && sizeOptions.isNotEmpty()) {
+                selectedSize = sizeOptions.first().first
+                sizePriceOffset = sizeOptions.first().second
             }
         }
 
@@ -412,13 +423,15 @@ fun PartnerDetailScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    addonOptions.forEach { (addonName, addonPrice) ->
+                    addonOptions.forEach { addon ->
+                        val addonName = addon.name
+                        val addonPrice = addon.price
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    if (selectedAddons.contains(addonName)) selectedAddons.remove(addonName)
-                                    else selectedAddons.add(addonName)
+                                    if (selectedAddons.any { it.name == addonName && it.price == addonPrice }) selectedAddons.removeAll { it.name == addonName && it.price == addonPrice }
+                                    else selectedAddons.add(addon)
                                 }
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -426,10 +439,10 @@ fun PartnerDetailScreen(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(
-                                    checked = selectedAddons.contains(addonName),
+                                    checked = selectedAddons.any { it.name == addonName && it.price == addonPrice },
                                     onCheckedChange = { isChecked ->
-                                        if (isChecked) selectedAddons.add(addonName)
-                                        else selectedAddons.remove(addonName)
+                                        if (isChecked && selectedAddons.none { it.name == addonName && it.price == addonPrice }) selectedAddons.add(addon)
+                                        else if (!isChecked) selectedAddons.removeAll { it.name == addonName && it.price == addonPrice }
                                     },
                                     colors = CheckboxDefaults.colors(checkedColor = BrandPrimary)
                                 )
@@ -454,7 +467,7 @@ fun PartnerDetailScreen(
                 Spacer(modifier = Modifier.height(18.dp))
 
                 // Quantity & Add to Cart Action
-                val totalProductPrice = ((prod.price + sizePriceOffset) * quantity)
+                val totalProductPrice = ((prod.price + sizePriceOffset + selectedAddons.sumOf { it.price }) * quantity)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -492,13 +505,13 @@ fun PartnerDetailScreen(
                     AppButton(
                         text = "إضافة (${totalProductPrice.toInt()} ج.م) ⚡",
                         onClick = {
-                            val optionsList = mutableListOf<String>()
-                            if (selectedSize.isNotEmpty()) optionsList.add("حجم: $selectedSize")
-                            if (selectedAddons.isNotEmpty()) optionsList.add("إضافات: ${selectedAddons.joinToString()}")
-                            if (specialNotes.isNotBlank()) optionsList.add("ملاحظة: $specialNotes")
-                            val optionsSummary = optionsList.joinToString(" • ")
-
-                            onAddToCart(prod, quantity, optionsSummary)
+                            val selection = CartSelection(
+                                selectedSize = selectedSize,
+                                sizePriceAdjustment = sizePriceOffset,
+                                selectedAddons = selectedAddons.toList(),
+                                specialNotes = specialNotes.trim()
+                            )
+                            onAddToCart(prod, quantity, selection)
                             productForSheet = null
                         },
                         modifier = Modifier.weight(1f).padding(start = 12.dp),
