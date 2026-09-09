@@ -489,7 +489,11 @@ class FalsareeRepository(private val dao: FalsareeDao) {
 
     suspend fun setOnboardingEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
         val settings = dao.getSettings().firstOrNull() ?: AppSettingsEntity()
-        dao.updateSettings(settings.copy(onboardingEnabled = enabled))
+        dao.insertSettings(settings.copy(onboardingEnabled = enabled))
+    }
+
+    suspend fun saveAppSettings(settings: AppSettingsEntity) = withContext(Dispatchers.IO) {
+        dao.insertSettings(settings.copy(id = 1))
     }
 
     // --- Home Builder Management ---
